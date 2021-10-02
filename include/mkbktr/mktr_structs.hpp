@@ -44,24 +44,26 @@ struct __attribute__((packed)) BktrSubsectionBucket {
   uint32_t entry_count;
   uint64_t bucket_end_offset;
   BktrSubsectionEntry entries[0x3FF0 / sizeof(BktrSubsectionEntry)];
-}
+};
 
 struct __attribute__((packed)) BktrHeaderEntry {
   uint32_t _padding;
   uint32_t bucket_count;
   uint64_t patched_image_size;
-  uint64_t bucket_patch_offsets[0x3FF0 / sizeof(uint64_t))];
+  uint64_t bucket_patch_offsets[0x3FF0 / sizeof(uint64_t)];
   // Bucket data follows, variable length
 };
 
 struct __attribute__((packed)) PatchInfo {
   uint64_t offset;
   uint64_t size;
-  char magic = "BKTR";
+  char magic[4] = {'B', 'K', 'T', 'R'};
   uint32_t _unknown0;
   uint32_t num_entries;
   uint32_t _unknown1;
 };
+
+struct HashInfo {};
 
 struct __attribute__((packed)) NcaFsHeader {
   uint16_t version;
@@ -78,8 +80,8 @@ struct __attribute__((packed)) NcaFsHeader {
 };
 
 struct __attribute__((packed)) NcaEncryptedKeyArea {
-
-}
+  uint8_t key[0x10];
+};
 
 struct __attribute__((packed)) NcaHeader {
   // RSA-2048 signature over the header (data from 0x200 to 0x400) using a fixed
@@ -95,6 +97,10 @@ struct __attribute__((packed)) NcaHeader {
 
   // (0x00 = System NCA, 0x01 = Gamecard NCA)
   uint8_t distribution_type;
+
+  // 0x00 = Program, 0x01 = Meta, 0x02 = Control, 0x03 = Manual, 0x04 = Data,
+  // 0x05 = PublicData
+  uint8_t content_type;
 
   //  (0x00 = 1.0.0, 0x01 = Unused, 0x02 = 3.0.0)
   uint8_t key_generation_old;

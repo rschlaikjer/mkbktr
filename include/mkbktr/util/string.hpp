@@ -30,6 +30,7 @@ static inline void trim(std::string &s) {
 }
 
 std::string hex_to_bytes(const std::string &hex);
+std::string bytes_to_hex(const std::string &bytes);
 
 } // namespace string
 } // namespace mkbktr
