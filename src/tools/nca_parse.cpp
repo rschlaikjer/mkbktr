@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
 
   // Decrypt header
   uint8_t xts_header[0xC00];
-  aes_xts_decrypt(xts_ctx, xts_header, mapped_nca->_data, 0x400, 0, 0x200);
+  aes_xts_decrypt(xts_ctx, xts_header, mapped_nca->_data, 0xC00, 0, 0x200);
 
   NcaHeader *header = reinterpret_cast<NcaHeader *>(xts_header);
   LOG("Magicnum: %c%c%c%c\n", header->magic[0], header->magic[1],
@@ -76,6 +76,20 @@ int main(int argc, char **argv) {
             std::string(reinterpret_cast<const char *>(encrypted_key.key),
                         sizeof(encrypted_key.key)))
             .c_str());
+  }
+
+  // FS headers are at 0x400 + sectionId * 0x200
+  for (int i = 0; i < 4; i++) {
+    // Ignore empty sections
+    auto &fs_entry = header->fs_entries[i];
+    if (fs_entry.start_offset == fs_entry.end_offset) {
+      continue;
+    }
+
+    long start_offset_bytes = 0x400 + (i * 0x200);
+    NcaFsHeader *fs_header =
+        reinterpret_cast<NcaFsHeader *>(&xts_header[start_offset_bytes]);
+    LOG("%p\n", fs_header);
   }
 
   return 0;

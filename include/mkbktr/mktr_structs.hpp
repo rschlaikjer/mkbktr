@@ -17,6 +17,24 @@ struct __attribute__((packed)) HierarchicalSha256 {
   uint64_t pfs0_fs_size;
   uint8_t _reserved[0xb0];
 };
+static_assert(sizeof(HierarchicalSha256) == 0xF8);
+
+struct __attribute__((packed)) HierarchicalIntegrity {
+  char magic[4] = {'I', 'V', 'F', 'C'};
+  uint32_t magic_number = 0x2000'0000;
+  uint32_t master_hash_size;
+  uint32_t seven = 7;
+  struct Level {
+    uint64_t offset;
+    uint64_t size;
+    uint32_t blksize;
+    uint32_t reserved;
+  };
+  Level levels[6];
+  uint8_t _reserved[0x20];
+  uint8_t hash[0x20];
+};
+static_assert(sizeof(HierarchicalIntegrity) == 0xE0);
 
 struct __attribute__((packed)) BktrRelocationEntry {
   uint64_t patched_address;
@@ -61,9 +79,8 @@ struct __attribute__((packed)) PatchInfo {
   uint32_t _unknown0;
   uint32_t num_entries;
   uint32_t _unknown1;
+  uint8_t _duplicated[0x20];
 };
-
-struct HashInfo {};
 
 struct __attribute__((packed)) NcaFsHeader {
   uint16_t version;
@@ -71,13 +88,17 @@ struct __attribute__((packed)) NcaFsHeader {
   uint8_t hash_type;
   uint8_t encryption_type;
   uint8_t _padding[3];
-  HashInfo hash_info;
+  union {
+    HierarchicalSha256 hier_256;
+    HierarchicalIntegrity integrity;
+  } hash_info;
   PatchInfo patch_info;
   uint32_t generation;
   uint32_t secure_value;
-  uint8_t sparse_info[30];
+  uint8_t sparse_info[0x30];
   uint8_t _reserved[0x88];
 };
+static_assert(sizeof(NcaFsHeader) == 0x200);
 
 struct __attribute__((packed)) NcaEncryptedKeyArea {
   uint8_t key[0x10];
