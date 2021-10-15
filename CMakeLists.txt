@@ -35,6 +35,7 @@ add_library(util
   src/util/string.cpp
   src/util/mem.cpp
   src/keys.cpp
+  src/mapped_nca.cpp
 )
 
 add_executable(mkbktr

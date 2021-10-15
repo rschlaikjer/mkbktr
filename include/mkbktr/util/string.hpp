@@ -5,7 +5,7 @@
 #include <locale>
 #include <string>
 
-namespace mkbktr {
+namespace mk {
 namespace string {
 
 // trim from start (in place)
@@ -33,4 +33,4 @@ std::string hex_to_bytes(const std::string &hex);
 std::string bytes_to_hex(const std::string &bytes);
 
 } // namespace string
-} // namespace mkbktr
+} // namespace mk

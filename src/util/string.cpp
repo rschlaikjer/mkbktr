@@ -1,7 +1,7 @@
 #include <mkbktr.hpp>
 #include <mkbktr/util/string.hpp>
 
-namespace mkbktr {
+namespace mk {
 namespace string {
 
 std::string bytes_to_hex(const std::string &bytes) {
@@ -51,4 +51,4 @@ std::string hex_to_bytes(const std::string &hex) {
 }
 
 } // namespace string
-} // namespace mkbktr
+} // namespace mk

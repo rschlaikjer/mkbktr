@@ -4,7 +4,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace mkbktr {
+namespace mk {
 
 struct Keys {
 
@@ -22,4 +22,4 @@ private:
   std::unordered_map<std::string, std::string> _keys_by_name;
 };
 
-} // namespace mkbktr
+} // namespace mk

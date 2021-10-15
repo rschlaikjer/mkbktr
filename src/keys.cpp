@@ -6,7 +6,7 @@
 #include <mkbktr/util/mem.hpp>
 #include <mkbktr/util/string.hpp>
 
-namespace mkbktr {
+namespace mk {
 
 // std::string header_key;
 
@@ -38,4 +38,4 @@ std::unique_ptr<Keys> Keys::from_file(const char *path) {
   return std::unique_ptr<Keys>(new Keys(keys_by_name));
 }
 
-} // namespace mkbktr
+} // namespace mk

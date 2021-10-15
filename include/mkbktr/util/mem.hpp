@@ -1,10 +1,11 @@
 #pragma once
 
 #include <stdint.h>
+#include <unistd.h>
 
 #include <memory>
 
-namespace mkbktr {
+namespace mk {
 namespace mem {
 
 struct MappedData {
@@ -20,4 +21,4 @@ struct MappedData {
 };
 
 } // namespace mem
-} // namespace mkbktr
+} // namespace mk

@@ -4,7 +4,7 @@
 
 #include <mkbktr/util/log.hpp>
 
-namespace mkbktr {
+namespace mk {
 namespace log {
 
 void write(const char *filename, int line, const char *fmt, ...) {
@@ -25,4 +25,4 @@ void write(const char *filename, int line, const char *fmt, ...) {
 }
 
 } // namespace log
-} // namespace mkbktr
+} // namespace mk

@@ -6,7 +6,7 @@
 
 #include <mkbktr/util/mem.hpp>
 
-namespace mkbktr {
+namespace mk {
 namespace mem {
 
 MappedData::~MappedData() { munmap(const_cast<uint8_t *>(_data), _size); }
@@ -40,4 +40,4 @@ std::unique_ptr<MappedData> MappedData::from_file(const char *filename) {
 }
 
 } // namespace mem
-} // namespace mkbktr
+} // namespace mk
