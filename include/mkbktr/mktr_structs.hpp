@@ -1,11 +1,14 @@
 #pragma once
 
 struct __attribute__((packed)) NcaFsEntry {
+  // Offsets here are in 0x200 byte media units
+  static const uint64_t SECTOR_SIZE = 0x200;
   uint32_t start_offset;
   uint32_t end_offset;
   uint32_t _reserved_0;
   uint32_t _reserved_1;
 };
+static_assert(sizeof(NcaFsEntry) == 16);
 
 struct __attribute__((packed)) HierarchicalSha256 {
   uint8_t sha256[0x20];
@@ -79,7 +82,13 @@ struct __attribute__((packed)) PatchInfo {
   uint32_t _unknown0;
   uint32_t num_entries;
   uint32_t _unknown1;
-  uint8_t _duplicated[0x20];
+};
+
+struct __attribute__((packed)) BktrSuperblock {
+  HierarchicalIntegrity ivfc_header;
+  uint8_t _0xE0[0x18];
+  PatchInfo relocation_header;
+  PatchInfo subsection_header;
 };
 
 struct __attribute__((packed)) NcaFsHeader {
@@ -87,12 +96,10 @@ struct __attribute__((packed)) NcaFsHeader {
   uint8_t fs_type;
   uint8_t hash_type;
   uint8_t encryption_type;
-  uint8_t _padding[3];
+  uint8_t _0x05[3];
   union {
-    HierarchicalSha256 hier_256;
-    HierarchicalIntegrity integrity;
-  } hash_info;
-  PatchInfo patch_info;
+    BktrSuperblock bktr_superblock;
+  };
   uint32_t generation;
   uint32_t secure_value;
   uint8_t sparse_info[0x30];
