@@ -71,15 +71,44 @@ void print_bktr(const mkbktr::mem::MappedData &nca, aes_ctx_t *aes_ctx,
   // Regenerate ctr
   uint8_t ctr[0x10];
   init_ctr_for_section(fs_header, ctr);
-  nca_update_ctr(ctr, section_offset +
-                          fs_header->bktr_superblock.relocation_header.offset);
-  aes_setiv(aes_ctx, ctr, 0x10);
 
-  // Decrypt the relocations
-  const std::string decrypted_relocations =
-      nca_read_aes_ctr(aes_ctx, nca._data, section_offset,
-                       fs_header->bktr_superblock.relocation_header.offset,
-                       fs_header->bktr_superblock.relocation_header.size);
+  // Decrypt the relocation header
+  const uint64_t relocation_header_offset =
+      fs_header->bktr_superblock.relocation_header.offset;
+  nca_update_ctr(ctr, section_offset + relocation_header_offset);
+  aes_setiv(aes_ctx, ctr, 0x10);
+  const std::string decrypted_relocations = nca_read_aes_ctr(
+      aes_ctx, nca._data, section_offset, relocation_header_offset,
+      fs_header->bktr_superblock.relocation_header.size);
+
+  // Relocation bucket header
+  const BktrHeaderEntry *relocation_header =
+      reinterpret_cast<const BktrHeaderEntry *>(decrypted_relocations.data());
+  LOG("Bucket count: %u, patched image size: %lu\n",
+      relocation_header->bucket_count, relocation_header->patched_image_size);
+
+  // Decrypt the buckets
+  const uint64_t bucket_data_offset =
+      relocation_header_offset + sizeof(BktrHeaderEntry);
+  nca_update_ctr(ctr, section_offset + bucket_data_offset);
+  aes_setiv(aes_ctx, ctr, 0x10);
+  const std::string decrypted_relocation_buckets = nca_read_aes_ctr(
+      aes_ctx, nca._data, section_offset, bucket_data_offset,
+      sizeof(BktrRelocationBucket) * relocation_header->bucket_count);
+
+  // Relocation buckets
+  const BktrRelocationBucket *buckets =
+      reinterpret_cast<const BktrRelocationBucket *>(
+          decrypted_relocation_buckets.data());
+  for (uint32_t i = 0; i < relocation_header->bucket_count; i++) {
+    LOG("Bucket %4d: entry count: %d\n", i, buckets[i].entry_count);
+    for (uint32_t entry = 0; entry < buckets[i].entry_count; entry++) {
+      LOG("    entry %4d: patch addr: %016lx, src addr: %016lx, src: %s\n",
+          entry, buckets[i].entries[entry].patched_address,
+          buckets[i].entries[entry].source_address,
+          buckets[i].entries[entry].is_patched ? "patch" : "base");
+    }
+  }
 
   LOG("ok");
 }
