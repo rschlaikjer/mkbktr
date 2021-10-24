@@ -26,8 +26,7 @@ int main(int argc, char **argv) {
   }
 
   // Generate a list of relocations
-  auto delta =
-      mk::delta::generate_diff(mapped_old->view(), mapped_new->view(), 4);
+  auto delta = mk::delta::generate_diff(mapped_old->view(), mapped_new->view());
 
   LOG("Total patch size %.fMiB\n",
       ((double)delta.patch_data.size()) / 1024.0 / 1024.0);
