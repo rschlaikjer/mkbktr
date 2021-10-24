@@ -154,6 +154,8 @@ Delta generate_diff(const std::string_view &old_data,
   MKASSERT(old_data.size() > 0);
   MKASSERT(new_data.size() > 0);
 
+  LOG("Generating diff using %ldKiB blocks\n", block_size / 1024);
+
   // Generate fixed-block strong/weak checksums for base file
   std::vector<BlockChecksum> old_block_checksums;
   {
