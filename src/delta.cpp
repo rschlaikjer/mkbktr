@@ -237,6 +237,7 @@ Delta generate_diff(const std::string_view &old_data,
       rolling_adler.roll_1(new_data[new_file_cursor]);
 
       // Seek forward until old/new files diverge
+      fprintf(stderr, "\n");
       LOG("Begin linear seek starting at  %016x new, %016x old\n",
           new_file_cursor, old_file_cursor);
       while (new_data[new_file_cursor] == old_data[old_file_cursor] &&
@@ -252,21 +253,26 @@ Delta generate_diff(const std::string_view &old_data,
       // Did we stop because we hit EOF on one of the inputs?
       const bool eof_old = old_file_cursor >= (int64_t)old_data.size();
       const bool eof_new = new_file_cursor >= (int64_t)new_data.size();
-      if (eof_old && eof_new) {
-        // Done with both files. Emit any pending seek relocation and break.
-        if (old_file_cursor > (int64_t)cur_entry.source_address) {
+      if (eof_new) {
+        // Done generating diff. Emit any pending seek relocation and break.
+        if (new_file_cursor > (int64_t)cur_entry.source_address) {
+          LOG("Emit BASE relocation @%016x + %016x\n",
+              cur_entry.patched_address,
+              new_file_cursor - cur_entry.patched_address);
           relocations.emplace_back(cur_entry);
         }
         break;
-      } else if (eof_old || eof_new) {
+      } else if (eof_old) {
         MKASSERT(false); // TODO
       }
 
       // If both files are still in play, but we diverged, check to see whether
       // we have finished a run where the data matched
-      if (old_file_cursor > (int64_t)cur_entry.source_address) {
+      if (new_file_cursor > (int64_t)cur_entry.source_address) {
         // Non-zero data were matched - emit the current relocation to source
         // file
+        LOG("Emit BASE relocation @%016x + %016x\n", cur_entry.patched_address,
+            new_file_cursor - cur_entry.patched_address);
         relocations.emplace_back(cur_entry);
       }
 
@@ -341,7 +347,7 @@ Delta generate_diff(const std::string_view &old_data,
 
         // If we did match a block, we are back on track - append the changed
         // bytes to the patch file contents, and emit the relocation
-        LOG("Emit relocation @%016x + %016x\n", cur_entry.patched_address,
+        LOG("Emit PATCH relocation @%016x + %016x\n", cur_entry.patched_address,
             new_file_cursor - cur_entry.patched_address);
         patch_data.append(&new_data[cur_entry.patched_address],
                           new_file_cursor - cur_entry.patched_address);
@@ -352,6 +358,17 @@ Delta generate_diff(const std::string_view &old_data,
         old_file_cursor = matched_block->block_offset + block_size - 1;
 
         // Go back to linear seek mode
+        break;
+      }
+
+      // If we hit EOF, then there were no more matching sections. Emit the
+      // final PATCH relocation and break.
+      if (new_file_cursor >= (int64_t)new_data.size()) {
+        LOG("Emit PATCH relocation @%016x + %016x\n", cur_entry.patched_address,
+            new_file_cursor - cur_entry.patched_address);
+        patch_data.append(&new_data[cur_entry.patched_address],
+                          new_file_cursor - cur_entry.patched_address);
+        relocations.emplace_back(cur_entry);
         break;
       }
     }
