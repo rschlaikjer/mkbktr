@@ -146,9 +146,9 @@ void test_incremental_adler(const std::string_view &data) {
   }
 }
 
-std::vector<BktrRelocationEntry> generate_diff(const std::string_view &old_data,
-                                               const std::string_view &new_data,
-                                               const int64_t block_size) {
+Delta generate_diff(const std::string_view &old_data,
+                    const std::string_view &new_data,
+                    const int64_t block_size) {
   // Sanity checks
   MKASSERT(block_size > 0);
   MKASSERT(old_data.size() > 0);
@@ -207,70 +207,151 @@ std::vector<BktrRelocationEntry> generate_diff(const std::string_view &old_data,
   // Now, we ned to scan the _new_ file, and calculate the rolling checksum at
   // _every_ byte offset, and test if any of them match one of the blocks in
   // the old file
+  std::vector<BktrRelocationEntry> relocations;
+  std::string patch_data;
   {
     mk::time::Timer t("Compare rolling adler");
     const int64_t start = mk::time::ms();
-    int64_t last_matched_offset = 0;
+
+    // For fast case (data is same), track our relative offsets in both files
+    int64_t old_file_cursor = 0;
+    int64_t new_file_cursor = 0;
+
+    // Track the adler context of the new file for when we need to match back in
     AdlerCtx rolling_adler(block_size);
-    for (int64_t offset = 0; offset < (int64_t)new_data.size(); offset++) {
-      // Maybe print a progress msg
-      if ((offset & 0x000F'FFFF) == 0) { // ~10MiB
-        const int64_t elapsed = mk::time::ms() - start;
-        const double bytes_per_ms = ((double)offset) / ((double)elapsed);
-        const double mib_per_ms = bytes_per_ms / 1024.0 / 1024.0;
-        const double mib_per_s = mib_per_ms * 1000;
-        const double bytes_remaining = new_data.size() - offset;
-        const double ms_remaining = bytes_remaining / bytes_per_ms;
-        const double minutes_remaining = ms_remaining / 1000 / 60;
-        LOG("Checking rolling checksums for patch file:"
-            " %.1f%%, %.1f MiB/s, Eta: %.1fmin    \r",
-            ((double)offset) * 100.0 / ((double)new_data.size()), mib_per_s,
-            minutes_remaining);
+
+    // Loop, alternating between match case and patch case, until we have
+    // completely consumed both files
+    while (true) {
+      // Entry to accumulate into
+      // It is assumed that upon loop entry, we are at a pair of locations where
+      // data matches between files, or the start offset
+      BktrRelocationEntry cur_entry;
+      cur_entry.patched_address = new_file_cursor;
+      cur_entry.source_address = old_file_cursor;
+      cur_entry.is_patched = BktrRelocationEntry::SRC_BASE;
+
+      // Consume current byte of input file into adler ctx
+      rolling_adler.roll_1(new_data[new_file_cursor]);
+
+      // Seek forward until old/new files diverge
+      LOG("Begin linear seek starting at  %016x new, %016x old\n",
+          new_file_cursor, old_file_cursor);
+      while (new_data[new_file_cursor] == old_data[old_file_cursor] &&
+             new_file_cursor < (int64_t)new_data.size() &&
+             old_file_cursor < (int64_t)old_data.size()) {
+        new_file_cursor++;
+        old_file_cursor++;
       }
 
-      // Incrementally adjust the current adler32
-      rolling_adler.roll_1(new_data[offset]);
+      LOG("Files diverge - %016x new, %016x old\n", new_file_cursor,
+          old_file_cursor);
 
-      // Where does the rolling adler block start?
-      const int64_t block_start_offset =
-          offset < block_size ? 0 : offset - block_size + 1;
-      const int64_t block_size = offset < block_size ? offset + 1 : block_size;
-
-      // If this rolling hash isn't in the map, just continue
-      auto search = block_checksums_by_adler.find(rolling_adler.digest());
-      if (search == block_checksums_by_adler.end()) {
-        continue;
+      // Did we stop because we hit EOF on one of the inputs?
+      const bool eof_old = old_file_cursor >= (int64_t)old_data.size();
+      const bool eof_new = new_file_cursor >= (int64_t)new_data.size();
+      if (eof_old && eof_new) {
+        // Done with both files. Emit any pending seek relocation and break.
+        if (old_file_cursor > (int64_t)cur_entry.source_address) {
+          relocations.emplace_back(cur_entry);
+        }
+        break;
+      } else if (eof_old || eof_new) {
+        MKASSERT(false); // TODO
       }
 
-      // If it is in there, generate a strong hash of the candidate blocks to
-      // ensure it really does match
-      const uint8_t *const block_start =
-          reinterpret_cast<const uint8_t *>(&new_data[block_start_offset]);
-      uint8_t strong_cksum[16];
-      calculate_md5(block_start, block_size, strong_cksum);
+      // If both files are still in play, but we diverged, check to see whether
+      // we have finished a run where the data matched
+      if (old_file_cursor > (int64_t)cur_entry.source_address) {
+        // Non-zero data were matched - emit the current relocation to source
+        // file
+        relocations.emplace_back(cur_entry);
+      }
 
-      BlockChecksum *matched_block = nullptr;
-      for (BlockChecksum *block : search->second) {
-        // If the MD5 doesn't match, it was a spurious adler match
-        if (memcmp(strong_cksum, block->strong_checksum, 16)) {
-          // LOG("New file %016lx matches old file %016lx SPURIOUSLY\n",
-          //     block_start_offset, block->block_offset);
+      // We are now in patch context -
+      // Reset the current relocation, and mark it as from the patch, at the
+      // current patch accumulation offset
+      cur_entry.patched_address = new_file_cursor;
+      cur_entry.source_address = patch_data.size();
+      cur_entry.is_patched = BktrRelocationEntry::SRC_PATCH;
+
+      // Roll it forwards until we encounter a point where the files match
+      // again, or EOF
+      for (; new_file_cursor < (int64_t)new_data.size(); new_file_cursor++) {
+        // Maybe print a progress msg
+        if ((new_file_cursor & 0x000F'FFFF) == 0) { // ~10MiB
+          const int64_t elapsed = mk::time::ms() - start;
+          const double bytes_per_ms =
+              ((double)new_file_cursor) / ((double)elapsed);
+          const double mib_per_ms = bytes_per_ms / 1024.0 / 1024.0;
+          const double mib_per_s = mib_per_ms * 1000;
+          const double bytes_remaining = new_data.size() - new_file_cursor;
+          const double ms_remaining = bytes_remaining / bytes_per_ms;
+          const double minutes_remaining = ms_remaining / 1000 / 60;
+          LOG("Checking rolling checksums for patch file:"
+              " %.1f%%, %.1f MiB/s, Eta: %.1fmin    \r",
+              ((double)new_file_cursor) * 100.0 / ((double)new_data.size()),
+              mib_per_s, minutes_remaining);
+        }
+
+        // Roll new value into the adler ctx
+        rolling_adler.roll_1(new_data[new_file_cursor]);
+
+        // Where does the rolling adler block start?
+        const int64_t block_start_offset =
+            new_file_cursor < block_size ? 0 : new_file_cursor - block_size + 1;
+        const int64_t current_block_size =
+            new_file_cursor < block_size ? new_file_cursor + 1 : block_size;
+
+        // If this rolling hash isn't in the map, just continue
+        auto search = block_checksums_by_adler.find(rolling_adler.digest());
+        if (search == block_checksums_by_adler.end()) {
           continue;
         }
 
-        // Otherwise, these blocks really are equal
-        // LOG("New file %016lx matches old file %016lx\n", block_start_offset,
-        //     block->block_offset);
-        matched_block = block;
+        // If it is in there, generate a strong hash of the candidate blocks to
+        // ensure it really does match
+        const uint8_t *const block_start =
+            reinterpret_cast<const uint8_t *>(&new_data[block_start_offset]);
+        uint8_t strong_cksum[16];
+        calculate_md5(block_start, current_block_size, strong_cksum);
+
+        BlockChecksum *matched_block = nullptr;
+        for (BlockChecksum *block : search->second) {
+          // If the MD5 doesn't match, it was a spurious adler match
+          if (memcmp(strong_cksum, block->strong_checksum, 16)) {
+            // LOG("New file %016lx matches old file %016lx SPURIOUSLY\n",
+            //     block_start_offset, block->block_offset);
+            continue;
+          }
+
+          // Otherwise, these blocks really are equal
+          LOG("New file %016lx matches old file %016lx\n", block_start_offset,
+              block->block_offset);
+          matched_block = block;
+          break;
+        }
+
+        // If we didn't match a block, continue
+        if (matched_block == nullptr) {
+          continue;
+        }
+
+        // If we did match a block, we are back on track - append the changed
+        // bytes to the patch file contents, and emit the relocation
+        LOG("Emit relocation @%016x + %016x\n", cur_entry.patched_address,
+            new_file_cursor - cur_entry.patched_address);
+        patch_data.append(&new_data[cur_entry.patched_address],
+                          new_file_cursor - cur_entry.patched_address);
+        relocations.emplace_back(cur_entry);
+
+        // Update the old file cursor to the matched position in the base file
+        // so that we can go back to linear seek
+        old_file_cursor = matched_block->block_offset + block_size - 1;
+
+        // Go back to linear seek mode
         break;
       }
-
-      // If we didn't match a block, continue
-      if (matched_block == nullptr) {
-        continue;
-      }
-
-      // If we did, theoretically actually do something about it
     }
 
     // Clear progress \r
@@ -281,8 +362,11 @@ std::vector<BktrRelocationEntry> generate_diff(const std::string_view &old_data,
         ((double)(new_data.size() / 1024 / 1024)) * 1000.0 / ((double)elapsed));
   }
 
-  std::vector<BktrRelocationEntry> relocations;
-  return relocations;
+  // Wrap up the data + relocations and return
+  Delta ret;
+  ret.patch_data = patch_data;
+  ret.relocations = relocations;
+  return ret;
 }
 
 } // namespace delta

@@ -26,12 +26,17 @@ int main(int argc, char **argv) {
   }
 
   // Generate a list of relocations
-  auto relocations =
-      mk::delta::generate_diff(mapped_old->view(), mapped_new->view());
+  auto delta = mk::delta::generate_diff(mapped_old->view(), mapped_new->view());
 
-  for (auto &relocation : relocations) {
-    LOG("Src: 0x%016x, Dst: %016x, %s\n", relocation.patched_address,
-        relocation.source_address, relocation.is_patched ? "PATCH" : "BASE");
+  LOG("Total patch size %.fMiB\n",
+      ((double)delta.patch_data.size()) / 1024.0 / 1024.0);
+  LOG("Generated %lu relocations:\n", delta.relocations.size());
+  unsigned reloc_idx = 0;
+  for (auto &relocation : delta.relocations) {
+    LOG("Relocation %4d: patch addr: %016lx, src addr: %016lx, src: %s\n",
+        reloc_idx, relocation.patched_address, relocation.source_address,
+        relocation.is_patched ? "patch" : "base");
+    reloc_idx++;
   }
 
   return 0;

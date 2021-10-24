@@ -43,6 +43,8 @@ struct __attribute__((packed)) BktrRelocationEntry {
   uint64_t patched_address;
   uint64_t source_address;
   // 1 = from patch, 0 = from base
+  static const uint32_t SRC_BASE = 0;
+  static const uint32_t SRC_PATCH = 1;
   uint32_t is_patched;
 };
 
