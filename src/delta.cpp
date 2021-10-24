@@ -15,7 +15,7 @@ namespace delta {
 
 // Block size for strong checksum
 // The larger the block, the faster we go but the more data we may duplicate
-static const int64_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+static const int64_t BLOCK_SIZE = 4 * 1024 * 1024; // 4 MiB
 
 struct BlockChecksum {
   // Location in old file of block
