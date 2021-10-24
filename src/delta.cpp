@@ -13,10 +13,6 @@
 namespace mk {
 namespace delta {
 
-// Block size for strong checksum
-// The larger the block, the faster we go but the more data we may duplicate
-static const int64_t BLOCK_SIZE = 4 * 1024 * 1024; // 4 MiB
-
 struct BlockChecksum {
   // Location in old file of block
   int64_t block_offset;
@@ -70,7 +66,7 @@ public:
       new_sum2 -= ADLER_MODULUS;
 
     // Pop the oldest data off the ringbuffer
-    const unsigned pop_off = _digested_block_count % BLOCK_SIZE;
+    const unsigned pop_off = _digested_block_count % _block_size;
     const uint8_t pop_byte = _data_ringbuffer[pop_off];
 
     // Overwrite that offset with this new byte
@@ -79,9 +75,9 @@ public:
     // Increment the digested byte count
     _digested_block_count++;
 
-    // If we have reached BLOCK_SIZE, then we want to actually start removing
+    // If we have reached _block_size, then we want to actually start removing
     // bytes off the front.
-    if (_digested_block_count > BLOCK_SIZE) {
+    if (_digested_block_count > _block_size) {
       // Decrement the sum/sum2 by the values to pop
       // Note that if we would underflow, we have to underflow from
       // ADLER_MODULUS not uint16_t max
@@ -129,16 +125,16 @@ void calculate_md5(const uint8_t *data, size_t len, uint8_t out[16]) {
 }
 
 void test_incremental_adler(const std::string_view &data) {
-  // Test that generating BLOCK_SIZE adlers with zlib for each offset matches
-  // generating a rolling zlib
-  AdlerCtx rolling_adler(BLOCK_SIZE);
+  // Test that generating DEFAULT_BLOCK_SIZE adlers with zlib for each offset
+  // matches generating a rolling zlib
+  AdlerCtx rolling_adler(DEFAULT_BLOCK_SIZE);
   for (int64_t offset = 0; offset < (int64_t)data.size(); offset++) {
     // Roll running adler
     rolling_adler.roll_1(data[offset]);
 
     // Work out the block size / get a pointer to the raw bytes
     const int64_t bytes_in_block =
-        offset >= BLOCK_SIZE ? BLOCK_SIZE : offset + 1;
+        offset >= DEFAULT_BLOCK_SIZE ? DEFAULT_BLOCK_SIZE : offset + 1;
     const uint8_t *const block_start =
         reinterpret_cast<const uint8_t *>(&data[offset - (bytes_in_block - 1)]);
 
@@ -150,18 +146,13 @@ void test_incremental_adler(const std::string_view &data) {
   }
 }
 
-std::vector<BktrRelocationEntry>
-generate_diff(const std::string_view &old_data,
-              const std::string_view &new_data) {
-  // Rolling md5 impl here
-  // Alpha = new file, Beta = old file
-  // We first split Alpha into non-overlapping fixed-size blocks of S bytes.
-  // Final block may be less than S bytes.
-  // We then search through the new file, and file all blocks of length S (at
-  // _any_ offset) that have the same weak/strong checksum.
-
-  // Rolling checksum is adler-32 - zlib adler32(init, buf, len)
-  // test_incremental_adler(old_data);
+std::vector<BktrRelocationEntry> generate_diff(const std::string_view &old_data,
+                                               const std::string_view &new_data,
+                                               const int64_t block_size) {
+  // Sanity checks
+  MKASSERT(block_size > 0);
+  MKASSERT(old_data.size() > 0);
+  MKASSERT(new_data.size() > 0);
 
   // Generate fixed-block strong/weak checksums for base file
   std::vector<BlockChecksum> old_block_checksums;
@@ -170,10 +161,10 @@ generate_diff(const std::string_view &old_data,
 
     int64_t last_status_print = mk::time::ms();
     for (int64_t old_offset = 0; old_offset < (int64_t)old_data.size();
-         old_offset += BLOCK_SIZE) {
+         old_offset += block_size) {
       // Do we have enough data left to fill this block?
       const int64_t bytes_in_block = std::min(
-          BLOCK_SIZE, static_cast<int64_t>(old_data.size() - old_offset));
+          block_size, static_cast<int64_t>(old_data.size() - old_offset));
       const uint8_t *const block_data =
           reinterpret_cast<const uint8_t *>(&old_data[old_offset]);
 
@@ -220,7 +211,7 @@ generate_diff(const std::string_view &old_data,
     mk::time::Timer t("Compare rolling adler");
     const int64_t start = mk::time::ms();
     int64_t last_matched_offset = 0;
-    AdlerCtx rolling_adler(BLOCK_SIZE);
+    AdlerCtx rolling_adler(block_size);
     for (int64_t offset = 0; offset < (int64_t)new_data.size(); offset++) {
       // Maybe print a progress msg
       if ((offset & 0x000F'FFFF) == 0) { // ~10MiB
@@ -242,8 +233,8 @@ generate_diff(const std::string_view &old_data,
 
       // Where does the rolling adler block start?
       const int64_t block_start_offset =
-          offset < BLOCK_SIZE ? 0 : offset - BLOCK_SIZE + 1;
-      const int64_t block_size = offset < BLOCK_SIZE ? offset + 1 : BLOCK_SIZE;
+          offset < block_size ? 0 : offset - block_size + 1;
+      const int64_t block_size = offset < block_size ? offset + 1 : block_size;
 
       // If this rolling hash isn't in the map, just continue
       auto search = block_checksums_by_adler.find(rolling_adler.digest());
@@ -256,7 +247,7 @@ generate_diff(const std::string_view &old_data,
       const uint8_t *const block_start =
           reinterpret_cast<const uint8_t *>(&new_data[block_start_offset]);
       uint8_t strong_cksum[16];
-      calculate_md5(block_start, BLOCK_SIZE, strong_cksum);
+      calculate_md5(block_start, block_size, strong_cksum);
 
       BlockChecksum *matched_block = nullptr;
       for (BlockChecksum *block : search->second) {
