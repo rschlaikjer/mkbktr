@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include <memory>
+#include <string_view>
 
 namespace mk {
 namespace mem {
@@ -18,6 +19,7 @@ struct MappedData {
   const ssize_t _size;
 
   static std::unique_ptr<MappedData> from_file(const char *filename);
+  const std::string_view view() const;
 };
 
 } // namespace mem

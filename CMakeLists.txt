@@ -33,9 +33,23 @@ add_subdirectory(vendor/mbedtls/include)
 add_library(util
   src/util/log.cpp
   src/util/string.cpp
+  src/util/time.cpp
   src/util/mem.cpp
+)
+
+add_library(core
+  src/aes.cpp
+  src/delta.cpp
   src/keys.cpp
   src/mapped_nca.cpp
+  src/mapped_nca.cpp
+)
+target_link_libraries(core
+  util
+  mbedcrypto
+  mbedx509
+  mbedtls
+  z
 )
 
 add_executable(mkbktr
@@ -44,19 +58,19 @@ add_executable(mkbktr
   src/aes.cpp
 )
 target_link_libraries(mkbktr
-  util
-  mbedcrypto
-  mbedx509
-  mbedtls
+  core
 )
 
 add_executable(nca_parse
   src/tools/nca_parse.cpp
-  src/aes.cpp
 )
 target_link_libraries(nca_parse
-  util
-  mbedcrypto
-  mbedx509
-  mbedtls
+  core
+)
+
+add_executable(generate_diff
+  src/tools/generate_diff.cpp
+)
+target_link_libraries(generate_diff
+  core
 )

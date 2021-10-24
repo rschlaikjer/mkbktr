@@ -39,5 +39,10 @@ std::unique_ptr<MappedData> MappedData::from_file(const char *filename) {
                                       file_size);
 }
 
+const std::string_view MappedData::view() const {
+  return std::string_view{reinterpret_cast<const char *>(_data),
+                          static_cast<std::string_view::size_type>(_size)};
+}
+
 } // namespace mem
 } // namespace mk

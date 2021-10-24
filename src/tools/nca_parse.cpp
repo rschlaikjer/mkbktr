@@ -51,6 +51,7 @@ int main(int argc, char **argv) {
   }
 
   nca->print_header_info();
+  nca->print_romfs_section(0);
   nca->print_bktr_section(1);
 
   return 0;

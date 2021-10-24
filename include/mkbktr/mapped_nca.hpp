@@ -17,6 +17,7 @@ public:
 public:
   void print_header_info();
   void print_bktr_section(int section);
+  void print_romfs_section(int section);
 
   // Read and decrypt data from a section that uses AES-CTR
   // May only be used for reads that are aligned on a sector boundary

@@ -66,6 +66,8 @@ void MappedNca::print_header_info() {
   }
 }
 
+void MappedNca::print_romfs_section(int section) { MKASSERT(section < 4); }
+
 void MappedNca::print_bktr_section(int section) {
   MKASSERT(section < 4);
 
