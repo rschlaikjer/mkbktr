@@ -218,14 +218,12 @@ generate_diff(const std::string_view &old_data,
   // the old file
   {
     mk::time::Timer t("Compare rolling adler");
-    int64_t last_status_print = mk::time::ms();
-
+    const int64_t start = mk::time::ms();
     int64_t last_matched_offset = 0;
     AdlerCtx rolling_adler(BLOCK_SIZE);
     for (int64_t offset = 0; offset < (int64_t)new_data.size(); offset++) {
       // Maybe print a progress msg
-      if (mk::time::ms() > last_status_print + 250) {
-        last_status_print = mk::time::ms();
+      if ((offset & 0x000F'FFFF) == 0) { // ~10MiB
         LOG("Checking rolling checksums for patch file: %.1f%%\r",
             ((double)offset) * 100.0 / ((double)new_data.size()));
       }
@@ -277,6 +275,10 @@ generate_diff(const std::string_view &old_data,
 
     // Clear progress \r
     fprintf(stderr, "\n");
+    const int64_t elapsed = mk::time::ms() - start;
+    LOG("Processed %lu bytes of data in %ldms, %.1fMiB/s\n", new_data.size(),
+        elapsed,
+        ((double)(new_data.size() / 1024 / 1024)) * 100.0 / ((double)elapsed));
   }
 
   std::vector<BktrRelocationEntry> relocations;
