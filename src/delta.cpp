@@ -224,8 +224,17 @@ generate_diff(const std::string_view &old_data,
     for (int64_t offset = 0; offset < (int64_t)new_data.size(); offset++) {
       // Maybe print a progress msg
       if ((offset & 0x000F'FFFF) == 0) { // ~10MiB
-        LOG("Checking rolling checksums for patch file: %.1f%%\r",
-            ((double)offset) * 100.0 / ((double)new_data.size()));
+        const int64_t elapsed = mk::time::ms() - start;
+        const double bytes_per_ms = ((double)offset) / ((double)elapsed);
+        const double mib_per_ms = bytes_per_ms / 1024.0 / 1024.0;
+        const double mib_per_s = mib_per_ms * 1000;
+        const double bytes_remaining = new_data.size() - offset;
+        const double ms_remaining = bytes_remaining / bytes_per_ms;
+        const double minutes_remaining = ms_remaining / 1000 / 60;
+        LOG("Checking rolling checksums for patch file:"
+            " %.1f%%, %.1f MiB/s, Eta: %.1fmin    \r",
+            ((double)offset) * 100.0 / ((double)new_data.size()), mib_per_s,
+            minutes_remaining);
       }
 
       // Incrementally adjust the current adler32
@@ -278,7 +287,7 @@ generate_diff(const std::string_view &old_data,
     const int64_t elapsed = mk::time::ms() - start;
     LOG("Processed %lu bytes of data in %ldms, %.1fMiB/s\n", new_data.size(),
         elapsed,
-        ((double)(new_data.size() / 1024 / 1024)) * 100.0 / ((double)elapsed));
+        ((double)(new_data.size() / 1024 / 1024)) * 1000.0 / ((double)elapsed));
   }
 
   std::vector<BktrRelocationEntry> relocations;
