@@ -14,7 +14,8 @@ namespace mk {
 namespace delta {
 
 // Block size for strong checksum
-static const int64_t BLOCK_SIZE = 64 * 1024; // 64 KiB
+// The larger the block, the faster we go but the more data we may duplicate
+static const int64_t BLOCK_SIZE = 128 * 1024; // 128 KiB
 
 struct BlockChecksum {
   // Location in old file of block
@@ -199,6 +200,7 @@ generate_diff(const std::string_view &old_data,
 
     // Clear line from progress indicator
     fprintf(stderr, "\n");
+    LOG("Generated %lu base block hashes\n", old_block_checksums.size());
   }
 
   // Generate a map of weak checksum -> block checksum for quick lookup
@@ -216,9 +218,18 @@ generate_diff(const std::string_view &old_data,
   // the old file
   {
     mk::time::Timer t("Compare rolling adler");
+    int64_t last_status_print = mk::time::ms();
+
     int64_t last_matched_offset = 0;
     AdlerCtx rolling_adler(BLOCK_SIZE);
     for (int64_t offset = 0; offset < (int64_t)new_data.size(); offset++) {
+      // Maybe print a progress msg
+      if (mk::time::ms() > last_status_print + 250) {
+        last_status_print = mk::time::ms();
+        LOG("Checking rolling checksums for patch file: %.1f%%\r",
+            ((double)offset) * 100.0 / ((double)new_data.size()));
+      }
+
       // Incrementally adjust the current adler32
       rolling_adler.roll_1(new_data[offset]);
 
@@ -233,8 +244,8 @@ generate_diff(const std::string_view &old_data,
         continue;
       }
 
-      // If it is in there, generate a strong hash of the block to ensure it
-      // really does match
+      // If it is in there, generate a strong hash of the candidate blocks to
+      // ensure it really does match
       const uint8_t *const block_start =
           reinterpret_cast<const uint8_t *>(&new_data[block_start_offset]);
       uint8_t strong_cksum[16];
@@ -260,7 +271,12 @@ generate_diff(const std::string_view &old_data,
       if (matched_block == nullptr) {
         continue;
       }
+
+      // If we did, theoretically actually do something about it
     }
+
+    // Clear progress \r
+    fprintf(stderr, "\n");
   }
 
   std::vector<BktrRelocationEntry> relocations;

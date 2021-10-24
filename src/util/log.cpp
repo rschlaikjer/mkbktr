@@ -17,7 +17,7 @@ void write(const char *filename, int line, const char *fmt, ...) {
   strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", timeinfo);
 
   // Write log line
-  fprintf(stderr, "%s: %d: ", filename, line);
+  fprintf(stderr, "%s:%d: ", filename, line);
   va_list args;
   va_start(args, fmt);
   vfprintf(stderr, fmt, args);
