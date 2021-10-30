@@ -60,11 +60,11 @@ int main(int argc, char **argv) {
   std::string old_s1;
   std::string new_s1;
   {
-    mk::time::Timer("Decrypt old NCA ROMFS");
+    mk::time::Timer t("Decrypt old NCA ROMFS");
     old_s1 = nca_old->decrypt_section(1);
   }
   {
-    mk::time::Timer("Decrypt new NCA ROMFS");
+    mk::time::Timer t("Decrypt new NCA ROMFS");
     new_s1 = nca_new->decrypt_section(1);
   }
 
