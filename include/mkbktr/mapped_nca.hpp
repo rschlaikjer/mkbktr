@@ -28,6 +28,9 @@ public:
   // Does not require sector alignment, but may incur memmove
   std::string read_aes_ctr(int section, uint64_t data_offset, uint64_t len);
 
+  // Read and decrypt an entire section's data
+  std::string decrypt_section(int section);
+
 private:
   MappedNca(std::unique_ptr<mk::mem::MappedData> backing_data, mk::Keys keys);
 
