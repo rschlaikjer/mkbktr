@@ -87,10 +87,8 @@ void aes_encrypt(aes_ctx_t *ctx, uint8_t *dst, const uint8_t *src, size_t l) {
     unsigned int blk_size = mbedtls_cipher_get_block_size(&ctx->cipher_enc);
 
     /* Do per-block updating */
-    for (int offset = 0; (unsigned int)offset < l; offset += blk_size) {
-      int len = ((unsigned int)(l - offset) > blk_size)
-                    ? blk_size
-                    : (unsigned int)(l - offset);
+    for (size_t offset = 0; offset < l; offset += blk_size) {
+      size_t len = ((l - offset) > blk_size) ? blk_size : (l - offset);
       mbedtls_cipher_update(&ctx->cipher_enc,
                             (const unsigned char *)src + offset, len,
                             (unsigned char *)dst + offset, &out_len);
@@ -126,10 +124,8 @@ void aes_decrypt(aes_ctx_t *ctx, uint8_t *dst, const uint8_t *src, size_t l) {
     unsigned int blk_size = mbedtls_cipher_get_block_size(&ctx->cipher_dec);
 
     /* Do per-block updating */
-    for (int offset = 0; (unsigned int)offset < l; offset += blk_size) {
-      int len = ((unsigned int)(l - offset) > blk_size)
-                    ? blk_size
-                    : (unsigned int)(l - offset);
+    for (size_t offset = 0; offset < l; offset += blk_size) {
+      size_t len = ((l - offset) > blk_size) ? blk_size : (l - offset);
       mbedtls_cipher_update(&ctx->cipher_dec,
                             (const unsigned char *)src + offset, len,
                             (unsigned char *)dst + offset, &out_len);
