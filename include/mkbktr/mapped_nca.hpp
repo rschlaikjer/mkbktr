@@ -31,6 +31,9 @@ public:
   // Read and decrypt an entire section's data
   std::string decrypt_section(int section);
 
+  // Size of a section, in bytes
+  uint64_t section_size(int section);
+
 private:
   MappedNca(std::unique_ptr<mk::mem::MappedData> backing_data, mk::Keys keys);
 

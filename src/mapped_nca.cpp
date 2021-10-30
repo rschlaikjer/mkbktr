@@ -66,14 +66,23 @@ void MappedNca::print_header_info() {
   }
 }
 
-std::string MappedNca::decrypt_section(int section) {
+uint64_t MappedNca::section_size(int section) {
+  MKASSERT(section < 4);
+
   // Get references to filesystem header/entry data
   const NcaFsHeader *fs_header = _fs_headers[section];
   const NcaFsEntry *fs_entry = &_header->fs_entries[section];
 
+  // Total section size is total sector count * sector size
+  return (fs_entry->end_offset - fs_entry->start_offset) *
+         fs_entry->SECTOR_SIZE;
+}
+
+std::string MappedNca::decrypt_section(int section) {
+  MKASSERT(section < 4);
+
   // Get the total size of the section
-  const uint64_t section_data_size =
-      (fs_entry->end_offset - fs_entry->start_offset) * fs_entry->SECTOR_SIZE;
+  const uint64_t section_data_size = section_size(section);
 
   // Decrypt all
   return read_aes_ctr(section, 0, section_data_size);
