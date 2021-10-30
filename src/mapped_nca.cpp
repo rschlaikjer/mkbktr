@@ -205,7 +205,9 @@ std::string MappedNca::read_aes_ctr_aligned(int section, uint64_t data_offset,
 
   // Select appropriate aes ctx
   aes_ctx_t *aes_ctx = nullptr;
-  if (_fs_headers[section]->encryption_type == 4) {
+  if (_fs_headers[section]->encryption_type == 3 ||
+      _fs_headers[section]->encryption_type == 4) {
+    // CTR, BKTR
     aes_ctx = _fs_entry_aes_ctxs[2];
   }
   MKASSERT(aes_ctx != nullptr);
@@ -247,10 +249,20 @@ MappedNca::parse(std::unique_ptr<mk::mem::MappedData> backing_data,
     return nullptr;
   }
 
+  auto key_for_generation = [&]() -> std::string {
+    if (nca->_header->key_generation == 0)
+      return "key_area_key_application_00";
+    if (nca->_header->key_generation == 11)
+      return "key_area_key_application_0a";
+
+    MKASSERT(false);
+    return "";
+  };
+
   // Decrypt key area
   {
     aes_ctx_t *key_aes_ctx =
-        new_aes_ctx(keys.get("key_area_key_application_0a"), 16, AES_MODE_ECB);
+        new_aes_ctx(keys.get(key_for_generation()), 16, AES_MODE_ECB);
     aes_decrypt(key_aes_ctx, (uint8_t *)nca->_decrypted_keys,
                 (uint8_t *)nca->_header->encrypted_key_areas,
                 sizeof(nca->_header->encrypted_key_areas));
