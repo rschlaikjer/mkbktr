@@ -112,6 +112,22 @@ int main(int argc, char **argv) {
   }
 #endif
 
+  auto round_to_sector = [](uint64_t size) -> uint64_t {
+    uint64_t mod = size % NcaFsEntry::SECTOR_SIZE;
+    if (mod == 0) {
+      return size;
+    }
+    return size + NcaFsEntry::SECTOR_SIZE - mod;
+  };
+
+  // Clone the delta data into the start of our BKTR section
+  std::string bktr_section_data = delta_ctx.patch_data;
+  LOG("Raw BKTR section data: %016lx\n", bktr_section_data.size());
+
+  // Pad to a multiple of sections
+  bktr_section_data.resize(round_to_sector(bktr_section_data.size()), '\0');
+  LOG("Padded BKTR section data: %016lx\n", bktr_section_data.size());
+
   // Now we need to actually generate the output NCA.
   // Serialize the delta context as a BKTR section
   BktrHeaderEntry relocation_header;
@@ -136,29 +152,20 @@ int main(int argc, char **argv) {
   // Treat all of the BKTR data as a single section
   BktrHeaderEntry subsection_header;
   subsection_header.bucket_count = 1;
-  subsection_header.patched_image_size = nca_new->section_size(1);
+  subsection_header.patched_image_size = bktr_section_data.size() +
+                                         sizeof(BktrHeaderEntry) +
+                                         sizeof(BktrSubsectionBucket);
   subsection_header.bucket_patch_offsets[0] = 0x0;
-
   BktrSubsectionBucket subsection_bucket;
   subsection_bucket.entry_count = 1;
-  subsection_bucket.bucket_end_offset = subsection_header.patched_image_size;
+  subsection_bucket.bucket_end_offset = bktr_section_data.size();
   // All data one section, zero tweak
   subsection_bucket.entries[0].offset = 0x0;
   subsection_bucket.entries[0].aes_ctr = 0x0;
 
-  // Clone the delta data into the start of our BKTR section
-  std::string bktr_section_data = delta_ctx.patch_data;
-
-  // We need to align the header data with the sector size, so pad as needed
-  {
-    const std::string::size_type low_addr =
-        bktr_section_data.size() % NcaFsEntry::SECTOR_SIZE;
-    if (low_addr) {
-      LOG("Padding BKTR header info by %lu bytes\n",
-          NcaFsEntry::SECTOR_SIZE - low_addr);
-      bktr_section_data.append(NcaFsEntry::SECTOR_SIZE - low_addr, '\0');
-    }
-  }
+  LOG("Subsection patch size: %016x, bucket end offset: %016x\n",
+      subsection_header.patched_image_size,
+      subsection_bucket.bucket_end_offset);
 
   // Save the new section position as the relocation header offset
   const uint64_t bktr_relocation_header_offset = bktr_section_data.size();
@@ -216,8 +223,7 @@ int main(int argc, char **argv) {
       bktr_subsection_header_offset;
   bktr_fs_header.bktr_superblock.subsection_header.size =
       sizeof(BktrHeaderEntry) + sizeof(BktrSubsectionBucket);
-  bktr_fs_header.bktr_superblock.subsection_header.num_entries =
-      delta_ctx.relocations.size();
+  bktr_fs_header.bktr_superblock.subsection_header.num_entries = 1;
 
   // Just clone the IVFC data from the new nca?
   bktr_fs_header.bktr_superblock.ivfc_header =
@@ -261,6 +267,12 @@ int main(int argc, char **argv) {
     }
   }
 
+  // Forcibly disable sections 2/3
+  patch_header->fs_entries[2].start_offset = 0x0;
+  patch_header->fs_entries[2].end_offset = 0x0;
+  patch_header->fs_entries[3].start_offset = 0x0;
+  patch_header->fs_entries[3].end_offset = 0x0;
+
   // Open our output file context
   int output_fd = ::open(bktr_nca_filename, O_RDWR | O_CREAT | O_TRUNC, 0644);
   if (output_fd == -1) {
@@ -282,6 +294,13 @@ int main(int argc, char **argv) {
 
   // For all sections _other_ than section 1, copy the data directly
   for (int i = 0; i < 4; i++) {
+    // Does this section exist?
+    if (patch_header->fs_entries[i].start_offset == 0 &&
+        patch_header->fs_entries[i].end_offset == 0) {
+      // If not, no data
+      continue;
+    }
+
     // Seek to correct offset in file
     const int64_t seek_offset =
         patch_header->fs_entries[i].start_offset * NcaFsEntry::SECTOR_SIZE;
