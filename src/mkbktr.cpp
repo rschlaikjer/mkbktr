@@ -149,16 +149,20 @@ int main(int argc, char **argv) {
   // Clone the delta data into the start of our BKTR section
   std::string bktr_section_data = delta_ctx.patch_data;
 
-  // Realign to a 64-bit boundary for cleanliness
+  // We need to align the header data with the sector size, so pad as needed
   {
-    const std::string::size_type low_addr = bktr_section_data.size() & 0b111;
+    const std::string::size_type low_addr =
+        bktr_section_data.size() % NcaFsEntry::SECTOR_SIZE;
     if (low_addr) {
-      bktr_section_data.append(8 % low_addr, '\0');
+      LOG("Padding BKTR header info by %lu bytes\n",
+          NcaFsEntry::SECTOR_SIZE - low_addr);
+      bktr_section_data.append(NcaFsEntry::SECTOR_SIZE - low_addr, '\0');
     }
   }
 
   // Save the new section position as the relocation header offset
   const uint64_t bktr_relocation_header_offset = bktr_section_data.size();
+  LOG("BKTR header offset: %016x\n", bktr_relocation_header_offset);
 
   // Serialize in relocations
   {
@@ -170,14 +174,6 @@ int main(int argc, char **argv) {
     memcpy(relocation_write_ptr, &relocation_header, sizeof(relocation_header));
     memcpy(relocation_write_ptr + sizeof(relocation_header), &relocation_bucket,
            sizeof(relocation_bucket));
-  }
-
-  // Realign again
-  {
-    const std::string::size_type low_addr = bktr_section_data.size() & 0b111;
-    if (low_addr) {
-      bktr_section_data.append(8 % low_addr, '\0');
-    }
   }
 
   // Save the new section position as the relocation header offset
@@ -332,5 +328,6 @@ int main(int argc, char **argv) {
     }
   }
 
+  LOG("Successfully generated '%s'\n", bktr_nca_filename);
   return 0;
 }

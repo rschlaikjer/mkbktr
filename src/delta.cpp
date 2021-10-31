@@ -223,7 +223,7 @@ Delta generate_diff(const std::string_view &old_data,
     // Track the adler context of the new file for when we need to match back in
     AdlerCtx rolling_adler(block_size);
 
-    auto print_status_msg = [&]() {
+    auto print_status_msg = [&](bool is_seek) {
       const int64_t elapsed = mk::time::ms() - start;
       const double bytes_per_ms = ((double)new_file_cursor) / ((double)elapsed);
       const double mib_per_ms = bytes_per_ms / 1024.0 / 1024.0;
@@ -231,8 +231,9 @@ Delta generate_diff(const std::string_view &old_data,
       const double bytes_remaining = new_data.size() - new_file_cursor;
       const double ms_remaining = bytes_remaining / bytes_per_ms;
       const double minutes_remaining = ms_remaining / 1000 / 60;
-      LOG("Checking rolling checksums for patch file:"
+      LOG("Checking rolling checksums for patch file [%s]:"
           " %.1f%%, %.1f MiB/s, Eta: %.1fmin    \r",
+          is_seek ? "SEEK" : "HASH",
           ((double)new_file_cursor) * 100.0 / ((double)new_data.size()),
           mib_per_s, minutes_remaining);
     };
@@ -264,7 +265,7 @@ Delta generate_diff(const std::string_view &old_data,
 
         // Maybe print a progress msg
         if ((new_file_cursor & 0x000F'FFFF) == 0) { // ~10MiB
-          print_status_msg();
+          print_status_msg(true);
         }
       }
 
@@ -315,7 +316,7 @@ Delta generate_diff(const std::string_view &old_data,
       for (; new_file_cursor < (int64_t)new_data.size(); new_file_cursor++) {
         // Maybe print a progress msg
         if ((new_file_cursor & 0x000F'FFFF) == 0) { // ~10MiB
-          print_status_msg();
+          print_status_msg(false);
         }
 
         // Roll new value into the adler ctx
