@@ -100,8 +100,9 @@ int main(int argc, char **argv) {
   // Print
   LOG("Total patch size %.fMiB\n",
       ((double)delta_ctx.patch_data.size()) / 1024.0 / 1024.0);
-  LOG("Generated %lu relocations:\n", delta_ctx.relocations.size());
 
+#if 0
+  LOG("Generated %lu relocations:\n", delta_ctx.relocations.size());
   unsigned reloc_idx = 0;
   for (auto &relocation : delta_ctx.relocations) {
     LOG("Relocation %4d: patch addr: %016lx, src addr: %016lx, src: %s\n",
@@ -109,6 +110,7 @@ int main(int argc, char **argv) {
         relocation.is_patched ? "patch" : "base");
     reloc_idx++;
   }
+#endif
 
   // Now we need to actually generate the output NCA.
   // Serialize the delta context as a BKTR section
@@ -202,6 +204,10 @@ int main(int argc, char **argv) {
   bktr_fs_header.generation = 1;
   bktr_fs_header.secure_value = 2;
 
+  // Explicitly default-init magic fields since this is a union
+  bktr_fs_header.bktr_superblock = BktrSuperblock{};
+
+  // Configure relocations
   bktr_fs_header.bktr_superblock.relocation_header.offset =
       bktr_relocation_header_offset;
   bktr_fs_header.bktr_superblock.relocation_header.size =
@@ -209,6 +215,7 @@ int main(int argc, char **argv) {
   bktr_fs_header.bktr_superblock.relocation_header.num_entries =
       delta_ctx.relocations.size();
 
+  // Sections
   bktr_fs_header.bktr_superblock.subsection_header.offset =
       bktr_subsection_header_offset;
   bktr_fs_header.bktr_superblock.subsection_header.size =
@@ -219,8 +226,6 @@ int main(int argc, char **argv) {
   // Just clone the IVFC data from the new nca?
   bktr_fs_header.bktr_superblock.ivfc_header =
       nca_new->_fs_headers[1]->bktr_superblock.ivfc_header;
-
-  NcaFsEntry bktr_fs_entry;
 
   // Use the 'new' base NCA header block as a starting point
   uint8_t patch_header_plaintext[0xc00];
