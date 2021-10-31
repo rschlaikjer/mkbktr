@@ -149,6 +149,7 @@ void test_incremental_adler(const std::string_view &data) {
 Delta generate_diff(const std::string_view &old_data,
                     const std::string_view &new_data,
                     const int64_t block_size) {
+
   // Sanity checks
   MKASSERT(block_size > 0);
   MKASSERT(old_data.size() > 0);
@@ -222,6 +223,20 @@ Delta generate_diff(const std::string_view &old_data,
     // Track the adler context of the new file for when we need to match back in
     AdlerCtx rolling_adler(block_size);
 
+    auto print_status_msg = [&]() {
+      const int64_t elapsed = mk::time::ms() - start;
+      const double bytes_per_ms = ((double)new_file_cursor) / ((double)elapsed);
+      const double mib_per_ms = bytes_per_ms / 1024.0 / 1024.0;
+      const double mib_per_s = mib_per_ms * 1000;
+      const double bytes_remaining = new_data.size() - new_file_cursor;
+      const double ms_remaining = bytes_remaining / bytes_per_ms;
+      const double minutes_remaining = ms_remaining / 1000 / 60;
+      LOG("Checking rolling checksums for patch file:"
+          " %.1f%%, %.1f MiB/s, Eta: %.1fmin    \r",
+          ((double)new_file_cursor) * 100.0 / ((double)new_data.size()),
+          mib_per_s, minutes_remaining);
+    };
+
     // Loop, alternating between match case and patch case, until we have
     // completely consumed both files
     while (true) {
@@ -237,18 +252,26 @@ Delta generate_diff(const std::string_view &old_data,
       rolling_adler.roll_1(new_data[new_file_cursor]);
 
       // Seek forward until old/new files diverge
-      fprintf(stderr, "\n");
+#ifdef DELTA_LOG
       LOG("Begin linear seek starting at  %016x new, %016x old\n",
           new_file_cursor, old_file_cursor);
+#endif
       while (new_data[new_file_cursor] == old_data[old_file_cursor] &&
              new_file_cursor < (int64_t)new_data.size() &&
              old_file_cursor < (int64_t)old_data.size()) {
         new_file_cursor++;
         old_file_cursor++;
+
+        // Maybe print a progress msg
+        if ((new_file_cursor & 0x000F'FFFF) == 0) { // ~10MiB
+          print_status_msg();
+        }
       }
 
+#ifdef DELTA_LOG
       LOG("Files diverge - %016x new, %016x old\n", new_file_cursor,
           old_file_cursor);
+#endif
 
       // Did we stop because we hit EOF on one of the inputs?
       const bool eof_old = old_file_cursor >= (int64_t)old_data.size();
@@ -256,9 +279,11 @@ Delta generate_diff(const std::string_view &old_data,
       if (eof_new) {
         // Done generating diff. Emit any pending seek relocation and break.
         if (new_file_cursor > (int64_t)cur_entry.source_address) {
+#ifdef DELTA_LOG
           LOG("Emit BASE relocation @%016x + %016x\n",
               cur_entry.patched_address,
               new_file_cursor - cur_entry.patched_address);
+#endif
           relocations.emplace_back(cur_entry);
         }
         break;
@@ -271,8 +296,10 @@ Delta generate_diff(const std::string_view &old_data,
       if (new_file_cursor > (int64_t)cur_entry.source_address) {
         // Non-zero data were matched - emit the current relocation to source
         // file
+#ifdef DELTA_LOG
         LOG("Emit BASE relocation @%016x + %016x\n", cur_entry.patched_address,
             new_file_cursor - cur_entry.patched_address);
+#endif
         relocations.emplace_back(cur_entry);
       }
 
@@ -288,18 +315,7 @@ Delta generate_diff(const std::string_view &old_data,
       for (; new_file_cursor < (int64_t)new_data.size(); new_file_cursor++) {
         // Maybe print a progress msg
         if ((new_file_cursor & 0x000F'FFFF) == 0) { // ~10MiB
-          const int64_t elapsed = mk::time::ms() - start;
-          const double bytes_per_ms =
-              ((double)new_file_cursor) / ((double)elapsed);
-          const double mib_per_ms = bytes_per_ms / 1024.0 / 1024.0;
-          const double mib_per_s = mib_per_ms * 1000;
-          const double bytes_remaining = new_data.size() - new_file_cursor;
-          const double ms_remaining = bytes_remaining / bytes_per_ms;
-          const double minutes_remaining = ms_remaining / 1000 / 60;
-          LOG("Checking rolling checksums for patch file:"
-              " %.1f%%, %.1f MiB/s, Eta: %.1fmin    \r",
-              ((double)new_file_cursor) * 100.0 / ((double)new_data.size()),
-              mib_per_s, minutes_remaining);
+          print_status_msg();
         }
 
         // Roll new value into the adler ctx
@@ -334,8 +350,10 @@ Delta generate_diff(const std::string_view &old_data,
           }
 
           // Otherwise, these blocks really are equal
+#ifdef DELTA_LOG
           LOG("New file %016lx matches old file %016lx\n", block_start_offset,
               block->block_offset);
+#endif
           matched_block = block;
           break;
         }
@@ -347,8 +365,10 @@ Delta generate_diff(const std::string_view &old_data,
 
         // If we did match a block, we are back on track - append the changed
         // bytes to the patch file contents, and emit the relocation
+#ifdef DELTA_LOG
         LOG("Emit PATCH relocation @%016x + %016x\n", cur_entry.patched_address,
             new_file_cursor - cur_entry.patched_address);
+#endif
         patch_data.append(&new_data[cur_entry.patched_address],
                           new_file_cursor - cur_entry.patched_address);
         relocations.emplace_back(cur_entry);
@@ -364,8 +384,10 @@ Delta generate_diff(const std::string_view &old_data,
       // If we hit EOF, then there were no more matching sections. Emit the
       // final PATCH relocation and break.
       if (new_file_cursor >= (int64_t)new_data.size()) {
+#ifdef DELTA_LOG
         LOG("Emit PATCH relocation @%016x + %016x\n", cur_entry.patched_address,
             new_file_cursor - cur_entry.patched_address);
+#endif
         patch_data.append(&new_data[cur_entry.patched_address],
                           new_file_cursor - cur_entry.patched_address);
         relocations.emplace_back(cur_entry);

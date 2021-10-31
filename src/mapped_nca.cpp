@@ -197,6 +197,15 @@ static void nca_update_ctr(uint8_t *ctr, uint64_t offset) {
   }
 }
 
+const uint8_t *MappedNca::section_data(int section) {
+  // Get sector start offset
+  MKASSERT(section < 4);
+  const uint64_t section_offset =
+      _header->fs_entries[section].start_offset * NcaFsEntry::SECTOR_SIZE;
+
+  return _backing_data->_data + section_offset;
+}
+
 std::string MappedNca::read_aes_ctr_aligned(int section, uint64_t data_offset,
                                             uint64_t len) {
   // Get sector start offset

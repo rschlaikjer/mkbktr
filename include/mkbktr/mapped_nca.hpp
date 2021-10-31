@@ -34,10 +34,15 @@ public:
   // Size of a section, in bytes
   uint64_t section_size(int section);
 
+  // Pointer to the start of section data
+  const uint8_t *section_data(int section);
+
+  const uint8_t *header_plaintext() { return _xts_header_decrypted; }
+
 private:
   MappedNca(std::unique_ptr<mk::mem::MappedData> backing_data, mk::Keys keys);
 
-private:
+public:
   // Underlying source data file
   const std::unique_ptr<mk::mem::MappedData> _backing_data;
 

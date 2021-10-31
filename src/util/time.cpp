@@ -12,7 +12,28 @@ int64_t ms() {
       .count();
 }
 
-Timer::~Timer() { LOG("Timer(%s): %lums\n", _msg.c_str(), ms() - _start); }
+Timer::~Timer() {
+  const int64_t elapsed_ms = ms() - _start;
+  if (elapsed_ms < 5'000) {
+    LOG("Timer(%s): %lums\n", _msg.c_str(), elapsed_ms);
+    return;
+  }
+
+  const int64_t elapsed_s = elapsed_ms / 1000;
+  if (elapsed_s < 300) {
+    LOG("Timer(%s): %lus\n", _msg.c_str(), elapsed_s);
+    return;
+  }
+
+  const int64_t elapsed_m = elapsed_s / 60;
+  if (elapsed_m < 300) {
+    LOG("Timer(%s): %lumin\n", _msg.c_str(), elapsed_m);
+    return;
+  }
+
+  const int64_t elapsed_h = elapsed_m / 60;
+  LOG("Timer(%s): %luhr\n", _msg.c_str(), elapsed_h);
+}
 
 } // namespace time
 } // namespace mk

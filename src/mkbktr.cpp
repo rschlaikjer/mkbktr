@@ -1,5 +1,8 @@
+#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include <mkbktr/aes.hpp>
 #include <mkbktr/delta.hpp>
@@ -10,6 +13,21 @@
 #include <mkbktr/util/mem.hpp>
 #include <mkbktr/util/string.hpp>
 #include <mkbktr/util/time.hpp>
+
+void init_ctr_for_section(const NcaFsHeader &fs_header, uint8_t *ctr) {
+  uint32_t section_ctr[2];
+  section_ctr[0] = __bswap_32(fs_header.secure_value);
+  section_ctr[1] = __bswap_32(fs_header.generation);
+  memcpy(ctr, section_ctr, sizeof(section_ctr));
+}
+
+static void nca_update_ctr(uint8_t *ctr, uint64_t offset) {
+  offset >>= 4;
+  for (unsigned j = 0; j < 0x8; j++) {
+    ctr[0x10 - j - 1] = static_cast<uint8_t>(offset & 0xFF);
+    offset >>= 8;
+  }
+}
 
 int main(int argc, char **argv) {
   mk::time::Timer _t_main("main()");
@@ -55,8 +73,8 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  nca_old->print_header_info();
-  nca_new->print_header_info();
+  // nca_old->print_header_info();
+  // nca_new->print_header_info();
 
   // Decrypt section 1 from each input NCA
   mk::delta::Delta delta_ctx;
@@ -100,6 +118,8 @@ int main(int argc, char **argv) {
   relocation_header.bucket_patch_offsets[0] = 0x0;
 
   // Since we're being lazy, assert all the entries fit in a single bucket
+  LOG("Bucket capacity: %lu/%lu\n", delta_ctx.relocations.size(),
+      sizeof(BktrRelocationBucket::entries) / sizeof(BktrRelocationEntry));
   MKASSERT(delta_ctx.relocations.size() <=
            sizeof(BktrRelocationBucket::entries) / sizeof(BktrRelocationEntry));
 
@@ -174,7 +194,7 @@ int main(int argc, char **argv) {
   }
 
   // Create fs header for BKTR section
-  NcaFsHeader bktr_fs_header;
+  NcaFsHeader bktr_fs_header{};
   bktr_fs_header.version = 2;
   bktr_fs_header.fs_type = 0;
   bktr_fs_header.hash_type = 3;
@@ -194,12 +214,118 @@ int main(int argc, char **argv) {
   bktr_fs_header.bktr_superblock.subsection_header.size =
       sizeof(BktrHeaderEntry) + sizeof(BktrSubsectionBucket);
   bktr_fs_header.bktr_superblock.subsection_header.num_entries =
-      delta_ctx.subsections.size();
+      delta_ctx.relocations.size();
 
-  // TODO
-  bktr_fs_header.bktr_superblock.ivfc_header; // Bunch of _stuff_ in here
+  // Just clone the IVFC data from the new nca?
+  bktr_fs_header.bktr_superblock.ivfc_header =
+      nca_new->_fs_headers[1]->bktr_superblock.ivfc_header;
 
   NcaFsEntry bktr_fs_entry;
+
+  // Use the 'new' base NCA header block as a starting point
+  uint8_t patch_header_plaintext[0xc00];
+  memcpy(patch_header_plaintext, nca_new->header_plaintext(),
+         sizeof(patch_header_plaintext));
+  NcaHeader *const patch_header =
+      reinterpret_cast<NcaHeader *>(patch_header_plaintext);
+
+  // Get pointers to the header areas
+  NcaFsHeader *fs_headers[4] = {
+      reinterpret_cast<NcaFsHeader *>(
+          &patch_header_plaintext[0x400 + 0x200 * 0]),
+      reinterpret_cast<NcaFsHeader *>(
+          &patch_header_plaintext[0x400 + 0x200 * 1]),
+      reinterpret_cast<NcaFsHeader *>(
+          &patch_header_plaintext[0x400 + 0x200 * 2]),
+      reinterpret_cast<NcaFsHeader *>(
+          &patch_header_plaintext[0x400 + 0x200 * 3]),
+  };
+
+  // Overwrite section 1 header with our custom BKTR info
+  *fs_headers[1] = bktr_fs_header;
+
+  // Recalculate FsEntry start/end offsets
+  {
+    uint64_t current_section_offset_bytes = 0xC00;
+    for (int i = 0; i < 4; i++) {
+      patch_header->fs_entries[i].start_offset =
+          current_section_offset_bytes / NcaFsEntry::SECTOR_SIZE;
+      if (i != 1) {
+        current_section_offset_bytes += nca_new->section_size(i);
+      } else {
+        current_section_offset_bytes += bktr_section_data.size();
+      }
+      patch_header->fs_entries[i].end_offset =
+          current_section_offset_bytes / NcaFsEntry::SECTOR_SIZE;
+    }
+  }
+
+  // Open our output file context
+  int output_fd = ::open(bktr_nca_filename, O_RDWR | O_CREAT | O_TRUNC, 0644);
+  if (output_fd == -1) {
+    fprintf(stderr, "Failed to open output '%s' - %s\n", bktr_nca_filename,
+            strerror(errno));
+    return -1;
+  }
+  std::shared_ptr<void> _defer_close_fd(nullptr,
+                                        [=](...) { ::close(output_fd); });
+
+  // Encrypt header and emit
+  uint8_t patch_header_ciphertext[sizeof(patch_header_plaintext)];
+  aes_xts_encrypt(nca_new->_aes_xts_ctx, patch_header_ciphertext,
+                  patch_header_plaintext, sizeof(patch_header_ciphertext), 0,
+                  NcaFsEntry::SECTOR_SIZE);
+  MKASSERT(::write(output_fd, patch_header_ciphertext,
+                   sizeof(patch_header_plaintext)) ==
+           sizeof(patch_header_plaintext));
+
+  // For all sections _other_ than section 1, copy the data directly
+  for (int i = 0; i < 4; i++) {
+    // Seek to correct offset in file
+    const int64_t seek_offset =
+        patch_header->fs_entries[i].start_offset * NcaFsEntry::SECTOR_SIZE;
+    LOG("Section %d seeking to %ld\n", i, seek_offset);
+    MKASSERT(lseek(output_fd, seek_offset, SEEK_SET) != -1);
+
+    if (i != 1) {
+      // Copy raw section data, no need for decrypt/reencrypt
+      const int64_t src_section_len = nca_new->section_size(i);
+      const uint8_t *src_section = nca_new->section_data(i);
+      MKASSERT(::write(output_fd, src_section, src_section_len) ==
+               src_section_len);
+    } else {
+      // BKTR data section
+      // TODO: encrypt
+
+      // Create holder for encrypted bktr data
+      std::string enc_bktr_section;
+      enc_bktr_section.resize(bktr_section_data.size());
+
+      // Initialize the CTR
+      uint8_t ctr[0x10];
+      init_ctr_for_section(*fs_headers[i], ctr);
+      nca_update_ctr(ctr, seek_offset);
+
+      // Select appropriate aes ctx
+      aes_ctx_t *aes_ctx = nullptr;
+      if (fs_headers[i]->encryption_type == 3 ||
+          fs_headers[i]->encryption_type == 4) {
+        // CTR, BKTR
+        aes_ctx = nca_new->_fs_entry_aes_ctxs[2];
+      }
+      MKASSERT(aes_ctx != nullptr);
+
+      // Encrypt
+      aes_setiv(aes_ctx, ctr, sizeof(ctr));
+      aes_encrypt(aes_ctx, reinterpret_cast<uint8_t *>(enc_bktr_section.data()),
+                  reinterpret_cast<const uint8_t *>(bktr_section_data.data()),
+                  enc_bktr_section.size());
+
+      MKASSERT(::write(output_fd, enc_bktr_section.data(),
+                       enc_bktr_section.size()) ==
+               (long int)enc_bktr_section.size());
+    }
+  }
 
   return 0;
 }
