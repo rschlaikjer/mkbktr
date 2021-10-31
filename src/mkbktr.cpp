@@ -21,6 +21,19 @@ void init_ctr_for_section(const NcaFsHeader &fs_header, uint8_t *ctr) {
   memcpy(ctr, section_ctr, sizeof(section_ctr));
 }
 
+void nca_update_bktr_ctr(uint8_t *ctr, uint32_t subsection_ctr,
+                         uint64_t offset) {
+  offset >>= 4;
+  for (unsigned j = 0; j < 0x8; j++) {
+    ctr[0x10 - j - 1] = static_cast<uint8_t>(offset & 0xFF);
+    offset >>= 8;
+  }
+  for (unsigned j = 0; j < 4; j++) {
+    ctr[0x8 - j - 1] = static_cast<uint8_t>(subsection_ctr & 0xFF);
+    subsection_ctr >>= 8;
+  }
+}
+
 static void nca_update_ctr(uint8_t *ctr, uint64_t offset) {
   offset >>= 4;
   for (unsigned j = 0; j < 0x8; j++) {
@@ -321,25 +334,55 @@ int main(int argc, char **argv) {
       std::string enc_bktr_section;
       enc_bktr_section.resize(bktr_section_data.size());
 
-      // Initialize the CTR
-      uint8_t ctr[0x10];
-      init_ctr_for_section(*fs_headers[i], ctr);
-      nca_update_ctr(ctr, seek_offset);
+      // Encrypt the real BKTR data using weirdo BKTR AES
+      {
+        uint8_t ctr[0x10];
+        init_ctr_for_section(*fs_headers[i], ctr);
+        nca_update_bktr_ctr(ctr, 0x0, seek_offset);
 
-      // Select appropriate aes ctx
-      aes_ctx_t *aes_ctx = nullptr;
-      if (fs_headers[i]->encryption_type == 3 ||
-          fs_headers[i]->encryption_type == 4) {
-        // CTR, BKTR
-        aes_ctx = nca_new->_fs_entry_aes_ctxs[2];
+        // Select appropriate aes ctx
+        aes_ctx_t *aes_ctx = nullptr;
+        if (fs_headers[i]->encryption_type == 3 ||
+            fs_headers[i]->encryption_type == 4) {
+          // CTR, BKTR
+          aes_ctx = nca_new->_fs_entry_aes_ctxs[2];
+        }
+        MKASSERT(aes_ctx != nullptr);
+
+        // Encrypt
+        aes_setiv(aes_ctx, ctr, sizeof(ctr));
+        aes_encrypt(aes_ctx,
+                    reinterpret_cast<uint8_t *>(enc_bktr_section.data()),
+                    reinterpret_cast<const uint8_t *>(bktr_section_data.data()),
+                    bktr_relocation_header_offset);
       }
-      MKASSERT(aes_ctx != nullptr);
 
-      // Encrypt
-      aes_setiv(aes_ctx, ctr, sizeof(ctr));
-      aes_encrypt(aes_ctx, reinterpret_cast<uint8_t *>(enc_bktr_section.data()),
-                  reinterpret_cast<const uint8_t *>(bktr_section_data.data()),
-                  enc_bktr_section.size());
+      // Encrypt the offset data using normal AES
+      {
+        // Initialize the CTR with the offset of the header info
+        uint8_t ctr[0x10];
+        init_ctr_for_section(*fs_headers[i], ctr);
+        nca_update_ctr(ctr, seek_offset + bktr_relocation_header_offset);
+
+        // Select appropriate aes ctx
+        aes_ctx_t *aes_ctx = nullptr;
+        if (fs_headers[i]->encryption_type == 3 ||
+            fs_headers[i]->encryption_type == 4) {
+          // CTR, BKTR
+          aes_ctx = nca_new->_fs_entry_aes_ctxs[2];
+        }
+        MKASSERT(aes_ctx != nullptr);
+
+        // Encrypt
+        aes_setiv(aes_ctx, ctr, sizeof(ctr));
+        aes_encrypt(
+            aes_ctx,
+            reinterpret_cast<uint8_t *>(enc_bktr_section.data()) +
+                bktr_relocation_header_offset,
+            reinterpret_cast<const uint8_t *>(bktr_section_data.data()) +
+                bktr_relocation_header_offset,
+            enc_bktr_section.size() - bktr_relocation_header_offset);
+      }
 
       MKASSERT(::write(output_fd, enc_bktr_section.data(),
                        enc_bktr_section.size()) ==
