@@ -294,7 +294,7 @@ Delta generate_diff(const std::string_view &old_data,
 
       // If both files are still in play, but we diverged, check to see whether
       // we have finished a run where the data matched
-      if (new_file_cursor > (int64_t)cur_entry.source_address) {
+      if (new_file_cursor > (int64_t)cur_entry.patched_address) {
         // Non-zero data were matched - emit the current relocation to source
         // file
 #ifdef DELTA_LOG
