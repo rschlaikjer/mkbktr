@@ -3,7 +3,6 @@
 #include <stdint.h>
 
 #include <mkbktr.hpp>
-#include <mkbktr/aes.hpp>
 
 #include <mbedtls/cipher.h>
 #include <mbedtls/cmac.h>

@@ -9,6 +9,7 @@
 #include <mkbktr/keys.hpp>
 #include <mkbktr/mapped_nca.hpp>
 #include <mkbktr/mktr_structs.hpp>
+#include <mkbktr/rsa.hpp>
 #include <mkbktr/util/log.hpp>
 #include <mkbktr/util/mem.hpp>
 #include <mkbktr/util/string.hpp>
@@ -297,6 +298,10 @@ int main(int argc, char **argv) {
   }
   std::shared_ptr<void> _defer_close_fd(nullptr,
                                         [=](...) { ::close(output_fd); });
+
+  // Calculate the NPDM signature over the header
+  rsa_sign(&patch_header->magic, 0x200, patch_header->header_signature_npdm,
+           0x100);
 
   // Encrypt header and emit
   uint8_t patch_header_ciphertext[sizeof(patch_header_plaintext)];

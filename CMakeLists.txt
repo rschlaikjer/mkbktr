@@ -43,6 +43,7 @@ add_library(core
   src/keys.cpp
   src/mapped_nca.cpp
   src/mapped_nca.cpp
+  src/rsa.cpp
 )
 target_link_libraries(core
   util
@@ -54,8 +55,6 @@ target_link_libraries(core
 
 add_executable(mkbktr
   src/mkbktr.cpp
-  src/aes.cpp
-  src/aes.cpp
 )
 target_link_libraries(mkbktr
   core
