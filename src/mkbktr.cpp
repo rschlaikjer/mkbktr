@@ -4,6 +4,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <mbedtls/md.h>
+#include <mbedtls/sha256.h>
+
 #include <mkbktr/aes.hpp>
 #include <mkbktr/delta.hpp>
 #include <mkbktr/keys.hpp>
@@ -302,6 +305,22 @@ int main(int argc, char **argv) {
   // Calculate the NPDM signature over the header
   rsa_sign(&patch_header->magic, 0x200, patch_header->header_signature_npdm,
            0x100);
+
+  // Generate SHA256 hashes over each FsHeader
+  auto generate_fs_header_sha = [](const NcaFsHeader *header, uint8_t *digest) {
+    mbedtls_md_context_t ctx;
+    mbedtls_md_init(&ctx);
+    MKASSERT(!mbedtls_md_setup(
+        &ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 0));
+    MKASSERT(!mbedtls_md_starts(&ctx));
+    mbedtls_md_update(&ctx, reinterpret_cast<const uint8_t *>(header),
+                      sizeof(NcaFsHeader));
+    mbedtls_md_finish(&ctx, digest);
+    mbedtls_md_free(&ctx);
+  };
+  for (int i = 0; i < 4; i++) {
+    generate_fs_header_sha(fs_headers[i], patch_header->fs_header_hashes[i]);
+  }
 
   // Encrypt header and emit
   uint8_t patch_header_ciphertext[sizeof(patch_header_plaintext)];
