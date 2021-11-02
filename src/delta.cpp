@@ -307,7 +307,8 @@ Delta generate_diff(const std::string_view &old_data,
       // We are now in patch context -
       // Reset the current relocation, and mark it as from the patch, at the
       // current patch accumulation offset
-      cur_entry.patched_address = new_file_cursor;
+      // Ensure that the patch address starts on a at byte boundary
+      cur_entry.patched_address = new_file_cursor - (new_file_cursor % 16);
       cur_entry.source_address = patch_data.size();
       cur_entry.is_patched = BktrRelocationEntry::SRC_PATCH;
 
@@ -366,6 +367,21 @@ Delta generate_diff(const std::string_view &old_data,
 
         // If we did match a block, we are back on track - append the changed
         // bytes to the patch file contents, and emit the relocation
+        // First though, we need to make sure everything lines up on a 16-byte
+        // boundary. Advance both cursors until new file cursor addr % 16 == 0
+        if (new_file_cursor % 16 != 0) {
+          const int64_t orig_cursor = new_file_cursor;
+          while (new_file_cursor % 16 != 0) {
+            new_file_cursor += 1;
+            rolling_adler.roll_1(new_data[new_file_cursor]);
+          }
+#ifdef DELTA_LOG
+          LOG("Rounding relocation to 16 byte boundary - %016lx -> %016lx\n",
+              orig_cursor, new_file_cursor);
+#endif
+        }
+
+        // Actually emit the new relocation entry.
 #ifdef DELTA_LOG
         LOG("Emit PATCH relocation @%016x + %016x\n", cur_entry.patched_address,
             new_file_cursor - cur_entry.patched_address);
@@ -376,7 +392,7 @@ Delta generate_diff(const std::string_view &old_data,
 
         // Update the old file cursor to the matched position in the base file
         // so that we can go back to linear seek
-        old_file_cursor = matched_block->block_offset + block_size - 1;
+        old_file_cursor = matched_block->block_offset + block_size;
 
         // Go back to linear seek mode
         break;
