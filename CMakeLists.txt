@@ -60,6 +60,20 @@ target_link_libraries(mkbktr
   core
 )
 
+add_executable(parse_cnmt
+  src/tools/parse_cnmt.cpp
+)
+target_link_libraries(parse_cnmt
+  core
+)
+
+add_executable(patch_cnmt
+  src/tools/patch_cnmt.cpp
+)
+target_link_libraries(patch_cnmt
+  core
+)
+
 add_executable(nca_parse
   src/tools/nca_parse.cpp
 )

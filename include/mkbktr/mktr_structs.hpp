@@ -157,3 +157,37 @@ struct __attribute__((packed)) NcaHeader {
 
   NcaEncryptedKeyArea encrypted_key_areas[4];
 };
+
+struct CnmtHeader {
+  uint64_t title_id;
+  uint32_t title_version;
+  uint8_t content_meta_type;
+  uint8_t _reserved_0xd;
+  uint16_t table_offset;
+  uint16_t content_entry_count;
+  uint16_t content_meta_entry_count;
+  uint8_t content_meta_attrs;
+  uint8_t _reserved_0x15[3];
+  uint32_t required_download_sys_version;
+  uint8_t _reserved_0x1c[4];
+};
+static_assert(sizeof(CnmtHeader) == 0x20);
+
+struct CnmtPackagedContentInfo {
+  uint8_t hash[0x20];
+  uint8_t content_id[0x10];
+  uint8_t size[6];
+  uint8_t content_type; // 0 = meta, 1 = program, 2 = data, 3 = control, 4 =
+                        // html, 5 = legal, 6 = delta
+  uint8_t id_offset;
+};
+static_assert(sizeof(CnmtPackagedContentInfo) == 0x38);
+
+struct CnmtContentMetaInfo {
+  uint64_t id;
+  uint32_t version;
+  uint8_t content_meta_type;
+  uint8_t content_meta_attrs;
+  uint8_t _reserved_0xe[2];
+};
+static_assert(sizeof(CnmtContentMetaInfo) == 0x10);
