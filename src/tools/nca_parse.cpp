@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
   }
 
   // Load keys
-  const char *path_to_prod_keys = argv[2]; // TODO: don't wanna work with absolute paths.
+  const char *path_to_prod_keys = argv[2];
   auto keys = mk::Keys::from_file(path_to_prod_keys);
   if (keys == nullptr) {
     return -1;

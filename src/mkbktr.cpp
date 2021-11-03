@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
   const char *original_nca_filename = argv[1];
   const char *new_nca_filename = argv[2];
   const char *bktr_nca_filename = argv[3];
-  const char *path_to_prod_keys = argv[4]; // TODO: this currently needs to be an absolute path.
+  const char *path_to_prod_keys = argv[4];
 
   // Load keys
   auto keys = mk::Keys::from_file(path_to_prod_keys);
