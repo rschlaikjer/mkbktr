@@ -29,7 +29,7 @@ std::unique_ptr<MappedData> MappedData::from_file(const char *filename) {
   }
 
   void *mmapped_data =
-      mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, file_fd, 0);
+    mmap(nullptr, file_size, PROT_READ, MAP_SHARED, file_fd, 0);
 
   if (mmapped_data == nullptr) {
     return nullptr;
