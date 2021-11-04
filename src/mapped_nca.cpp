@@ -238,15 +238,35 @@ void MappedNca::read_aes_ctr_aligned(int section, uint64_t data_offset,
 
 void MappedNca::read_aes_ctr(int section, uint64_t data_offset, uint64_t len,
                              uint8_t *out) const {
-  read_aes_ctr_aligned(section, data_offset, len, out);
+  // Is this address aligned to an AES sector boundary?
+  if ((data_offset & 0xFF) == 0) {
+    // If so, great, just proxy the call and be done
+    read_aes_ctr_aligned(section, data_offset, len, out);
+    return;
+  }
+
+  // If this _doesn't_ align to a page boundary, manually over-read the first
+  // page and copy only the bit we care about into the output buffer
+  uint8_t first_sector_buf[0x100];
+  const int64_t misalign_read_offset = data_offset & 0xFF;
+  const int64_t misaligned_bytes_to_keep = 0x100 - misalign_read_offset;
+  read_aes_ctr_aligned(section, data_offset & ~0xFF, 0x100, first_sector_buf);
+  memcpy(out, &first_sector_buf[misalign_read_offset],
+         misaligned_bytes_to_keep);
+
+  // Now read all the subsequent blocks 'normally'
+  const int64_t remaining_bytes = len - misaligned_bytes_to_keep;
+  const int64_t first_full_sector_offset = misalign_read_offset + 0x100;
+  read_aes_ctr_aligned(section, first_full_sector_offset, remaining_bytes,
+                       &out[misaligned_bytes_to_keep]);
 }
 
 std::string MappedNca::read_aes_ctr(int section, uint64_t data_offset,
                                     uint64_t len) const {
   std::string ret;
   ret.resize(len);
-  read_aes_ctr_aligned(section, data_offset, len,
-                       reinterpret_cast<uint8_t *>(ret.data()));
+  read_aes_ctr(section, data_offset, len,
+               reinterpret_cast<uint8_t *>(ret.data()));
   return ret;
 }
 
