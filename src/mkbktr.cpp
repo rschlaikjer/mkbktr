@@ -50,7 +50,10 @@ int main(int argc, char **argv) {
   mk::time::Timer _t_main("main()");
 
   if (argc != 5) {
-    fprintf(stderr, "Usage: %s [original nca] [patched nca] [output nca] [/path/to/prod.keys]\n", argv[0]);
+    fprintf(stderr,
+            "Usage: %s [original nca] [patched nca] [output nca] "
+            "[/path/to/prod.keys]\n",
+            argv[0]);
     return -1;
   }
 
@@ -132,6 +135,7 @@ int main(int argc, char **argv) {
   // Now we need to actually generate the output NCA.
   // Serialize the delta context as a BKTR section
   BktrHeaderEntry relocation_header;
+  memset(&relocation_header, 0, sizeof(relocation_header));
   relocation_header.bucket_count = 1;
   relocation_header.patched_image_size = nca_new->section_size(1);
   relocation_header.bucket_patch_offsets[0] = 0x0;
@@ -144,6 +148,7 @@ int main(int argc, char **argv) {
 
   // Create bucket to contain the relocation entries
   BktrRelocationBucket relocation_bucket;
+  memset(&relocation_bucket, 0, sizeof(relocation_bucket));
   relocation_bucket.entry_count = delta_ctx.relocations.size();
   relocation_bucket.bucket_end_offset = relocation_header.patched_image_size;
   for (unsigned i = 0; i < delta_ctx.relocations.size(); i++) {
@@ -152,12 +157,14 @@ int main(int argc, char **argv) {
 
   // Treat all of the BKTR data as a single section
   BktrHeaderEntry subsection_header;
+  memset(&subsection_header, 0, sizeof(subsection_header));
   subsection_header.bucket_count = 1;
   subsection_header.patched_image_size = bktr_section_data.size() +
                                          sizeof(BktrHeaderEntry) +
                                          sizeof(BktrSubsectionBucket);
   subsection_header.bucket_patch_offsets[0] = 0x0;
   BktrSubsectionBucket subsection_bucket;
+  memset(&subsection_bucket, 0, sizeof(subsection_bucket));
   subsection_bucket.entry_count = 1;
   subsection_bucket.bucket_end_offset = bktr_section_data.size();
   // All data one section, zero tweak
@@ -178,7 +185,8 @@ int main(int argc, char **argv) {
         sizeof(BktrHeaderEntry) + sizeof(BktrSubsectionBucket);
     char *const relocation_write_ptr =
         &bktr_section_data.data()[bktr_section_data.size()];
-    bktr_section_data.resize(bktr_section_data.size() + relocation_data_size);
+    bktr_section_data.resize(bktr_section_data.size() + relocation_data_size,
+                             '\0');
     memcpy(relocation_write_ptr, &relocation_header, sizeof(relocation_header));
     memcpy(relocation_write_ptr + sizeof(relocation_header), &relocation_bucket,
            sizeof(relocation_bucket));
@@ -193,7 +201,8 @@ int main(int argc, char **argv) {
         sizeof(BktrHeaderEntry) + sizeof(BktrSubsectionBucket);
     char *const subsection_write_ptr =
         &bktr_section_data.data()[bktr_section_data.size()];
-    bktr_section_data.resize(bktr_section_data.size() + subsection_data_size);
+    bktr_section_data.resize(bktr_section_data.size() + subsection_data_size,
+                             '\0');
     memcpy(subsection_write_ptr, &subsection_header, sizeof(subsection_header));
     memcpy(subsection_write_ptr + sizeof(subsection_header), &subsection_bucket,
            sizeof(subsection_bucket));
@@ -261,7 +270,8 @@ int main(int argc, char **argv) {
       if (i != 1) {
         current_section_offset_bytes += nca_new->section_size(i);
       } else {
-        // section 1 is the only section that needs recalculation based on BKTR size.
+        // section 1 is the only section that needs recalculation based on BKTR
+        // size.
         current_section_offset_bytes += bktr_section_data.size();
       }
       patch_header->fs_entries[i].end_offset =
@@ -285,10 +295,6 @@ int main(int argc, char **argv) {
   std::shared_ptr<void> _defer_close_fd(nullptr,
                                         [=](...) { ::close(output_fd); });
 
-  // Calculate the NPDM signature over the header
-  rsa_sign(&patch_header->magic, 0x200, patch_header->header_signature_npdm,
-           0x100);
-
   // Generate SHA256 hashes over each FsHeader
   auto generate_fs_header_sha = [](const NcaFsHeader *header, uint8_t *digest) {
     mbedtls_md_context_t ctx;
@@ -304,6 +310,10 @@ int main(int argc, char **argv) {
   for (int i = 0; i < 4; i++) {
     generate_fs_header_sha(fs_headers[i], patch_header->fs_header_hashes[i]);
   }
+
+  // Calculate the NPDM signature over the header
+  rsa_sign(&patch_header->magic, 0x200, patch_header->header_signature_npdm,
+           0x100);
 
   // Encrypt header and emit
   uint8_t patch_header_ciphertext[sizeof(patch_header_plaintext)];
@@ -335,12 +345,13 @@ int main(int argc, char **argv) {
       const uint8_t *src_section = nca_new->section_data(i);
       MKASSERT(::write(output_fd, src_section, src_section_len) ==
                src_section_len);
+      LOG("Copied %lu bytes from section %d\n", src_section_len, i);
     } else {
       // BKTR data section
 
       // Create holder for encrypted bktr data
       std::string enc_bktr_section;
-      enc_bktr_section.resize(bktr_section_data.size());
+      enc_bktr_section.resize(bktr_section_data.size(), '\0');
 
       // Encrypt the real BKTR data using weirdo BKTR AES-CTR
       {
@@ -395,6 +406,7 @@ int main(int argc, char **argv) {
       MKASSERT(::write(output_fd, enc_bktr_section.data(),
                        enc_bktr_section.size()) ==
                (long int)enc_bktr_section.size());
+      LOG("Wrote %lu bytes for section %d\n", enc_bktr_section.size(), i);
     }
   }
 
