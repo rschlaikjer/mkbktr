@@ -245,13 +245,19 @@ void MappedNca::read_aes_ctr(int section, uint64_t data_offset, uint64_t len,
   uint8_t first_sector_buf[0x100];
   const uint64_t aligned_read_base = data_offset & ~(0x00000000'000000FFL);
   const uint64_t misalign_read_offset = data_offset & 0xFFL;
-  const uint64_t misaligned_bytes_to_keep = 0x100L - misalign_read_offset;
+  const uint64_t max_misaligned_bytes_to_keep = 0x100L - misalign_read_offset;
+  const uint64_t misaligned_bytes_to_keep =
+      std::min(len, max_misaligned_bytes_to_keep);
   read_aes_ctr_aligned(section, aligned_read_base, 0x100, first_sector_buf);
   memcpy(out, &first_sector_buf[misalign_read_offset],
          misaligned_bytes_to_keep);
 
   // Now read all the subsequent blocks 'normally'
   const int64_t remaining_bytes = len - misaligned_bytes_to_keep;
+  if (remaining_bytes == 0) {
+    // If this block would be empty, don't even bother
+    return;
+  }
   const int64_t first_full_sector_offset = aligned_read_base + 0x100;
   read_aes_ctr_aligned(section, first_full_sector_offset, remaining_bytes,
                        &out[misaligned_bytes_to_keep]);
