@@ -49,8 +49,8 @@ static void nca_update_ctr(uint8_t *ctr, uint64_t offset) {
 int main(int argc, char **argv) {
   mk::time::Timer _t_main("main()");
 
-  if (argc != 4) {
-    fprintf(stderr, "Usage: %s original patched output\n", argv[0]);
+  if (argc != 5) {
+    fprintf(stderr, "Usage: %s [original nca] [patched nca] [output nca] [/path/to/prod.keys]\n", argv[0]);
     return -1;
   }
 
@@ -58,10 +58,10 @@ int main(int argc, char **argv) {
   const char *original_nca_filename = argv[1];
   const char *new_nca_filename = argv[2];
   const char *bktr_nca_filename = argv[3];
+  const char *path_to_prod_keys = argv[4];
 
   // Load keys
-  auto keys =
-      mk::Keys::from_file("/home/ross/.local/share/yuzu/keys/prod.keys");
+  auto keys = mk::Keys::from_file(path_to_prod_keys);
   if (keys == nullptr) {
     return -1;
   }
@@ -190,9 +190,9 @@ int main(int argc, char **argv) {
   const uint64_t bktr_relocation_header_offset = bktr_section_data.size();
   LOG("BKTR header offset: %016x\n", bktr_relocation_header_offset);
 
-  // Serialize in relocations
+  // Copy relocation data into the output BKTR buffer.
   {
-    const unsigned relocation_data_size =
+    const size_t relocation_data_size =
         sizeof(BktrHeaderEntry) + sizeof(BktrSubsectionBucket);
     char *const relocation_write_ptr =
         &bktr_section_data.data()[bktr_section_data.size()];
@@ -205,9 +205,9 @@ int main(int argc, char **argv) {
   // Save the new section position as the relocation header offset
   const uint64_t bktr_subsection_header_offset = bktr_section_data.size();
 
-  // Serialize in sections
+  // Copy subsection data into the output BKTR buffer.
   {
-    const unsigned subsection_data_size =
+    const size_t subsection_data_size =
         sizeof(BktrHeaderEntry) + sizeof(BktrSubsectionBucket);
     char *const subsection_write_ptr =
         &bktr_section_data.data()[bktr_section_data.size()];
@@ -219,12 +219,12 @@ int main(int argc, char **argv) {
 
   // Create fs header for BKTR section
   NcaFsHeader bktr_fs_header{};
-  bktr_fs_header.version = 2;
-  bktr_fs_header.fs_type = 0;
-  bktr_fs_header.hash_type = 3;
-  bktr_fs_header.encryption_type = 4;
-  bktr_fs_header.generation = 1;
-  bktr_fs_header.secure_value = 2;
+  bktr_fs_header.version = 0x2;
+  bktr_fs_header.fs_type = 0x0;
+  bktr_fs_header.hash_type = 0x3;
+  bktr_fs_header.encryption_type = 0x4;
+  bktr_fs_header.generation = 0x1;
+  bktr_fs_header.secure_value = 0x2;
 
   // Explicitly default-init magic fields since this is a union
   bktr_fs_header.bktr_superblock = BktrSuperblock{};
@@ -237,18 +237,18 @@ int main(int argc, char **argv) {
   bktr_fs_header.bktr_superblock.relocation_header.num_entries =
       delta_ctx.relocations.size();
 
-  // Sections
+  // Configure Sections
   bktr_fs_header.bktr_superblock.subsection_header.offset =
       bktr_subsection_header_offset;
   bktr_fs_header.bktr_superblock.subsection_header.size =
       sizeof(BktrHeaderEntry) + sizeof(BktrSubsectionBucket);
   bktr_fs_header.bktr_superblock.subsection_header.num_entries = 1;
 
-  // Just clone the IVFC data from the new nca?
+  // Clone the IVFC data from the new nca for the patch NCA
   bktr_fs_header.bktr_superblock.ivfc_header =
       nca_new->_fs_headers[1]->bktr_superblock.ivfc_header;
 
-  // Use the 'new' base NCA header block as a starting point
+  // Use the 'new' base NCA header block as a starting point for result
   uint8_t patch_header_plaintext[0xc00];
   memcpy(patch_header_plaintext, nca_new->header_plaintext(),
          sizeof(patch_header_plaintext));
@@ -258,13 +258,13 @@ int main(int argc, char **argv) {
   // Get pointers to the header areas
   NcaFsHeader *fs_headers[4] = {
       reinterpret_cast<NcaFsHeader *>(
-          &patch_header_plaintext[0x400 + 0x200 * 0]),
+          &patch_header_plaintext[0x400 + (0x200 * 0)]),
       reinterpret_cast<NcaFsHeader *>(
-          &patch_header_plaintext[0x400 + 0x200 * 1]),
+          &patch_header_plaintext[0x400 + (0x200 * 1)]),
       reinterpret_cast<NcaFsHeader *>(
-          &patch_header_plaintext[0x400 + 0x200 * 2]),
+          &patch_header_plaintext[0x400 + (0x200 * 2)]),
       reinterpret_cast<NcaFsHeader *>(
-          &patch_header_plaintext[0x400 + 0x200 * 3]),
+          &patch_header_plaintext[0x400 + (0x200 * 3)]),
   };
 
   // Overwrite section 1 header with our custom BKTR info
@@ -279,6 +279,7 @@ int main(int argc, char **argv) {
       if (i != 1) {
         current_section_offset_bytes += nca_new->section_size(i);
       } else {
+        // section 1 is the only section that needs recalculation based on BKTR size.
         current_section_offset_bytes += bktr_section_data.size();
       }
       patch_header->fs_entries[i].end_offset =
@@ -354,19 +355,18 @@ int main(int argc, char **argv) {
                src_section_len);
     } else {
       // BKTR data section
-      // TODO: encrypt
 
       // Create holder for encrypted bktr data
       std::string enc_bktr_section;
       enc_bktr_section.resize(bktr_section_data.size());
 
-      // Encrypt the real BKTR data using weirdo BKTR AES
+      // Encrypt the real BKTR data using weirdo BKTR AES-CTR
       {
         uint8_t ctr[0x10];
         init_ctr_for_section(*fs_headers[i], ctr);
         nca_update_bktr_ctr(ctr, 0x0, seek_offset);
 
-        // Select appropriate aes ctx
+        // Select appropriate aes context
         aes_ctx_t *aes_ctx = nullptr;
         if (fs_headers[i]->encryption_type == 3 ||
             fs_headers[i]->encryption_type == 4) {

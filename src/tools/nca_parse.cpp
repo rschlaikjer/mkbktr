@@ -23,8 +23,8 @@ nca_update_bktr_ctr(uint8_t *ctr, uint32_t subsection_ctr, uint64_t offset) {
 }
 
 int main(int argc, char **argv) {
-  if (argc != 2) {
-    fprintf(stderr, "Usage: %s [nca filename]\n", argv[0]);
+  if (argc != 3) {
+    fprintf(stderr, "Usage: %s [nca filename] [/path/to/prod.keys]\n", argv[0]);
     return -1;
   }
 
@@ -37,8 +37,8 @@ int main(int argc, char **argv) {
   }
 
   // Load keys
-  auto keys =
-      mk::Keys::from_file("/home/ross/.local/share/yuzu/keys/prod.keys");
+  const char *path_to_prod_keys = argv[2];
+  auto keys = mk::Keys::from_file(path_to_prod_keys);
   if (keys == nullptr) {
     return -1;
   }
