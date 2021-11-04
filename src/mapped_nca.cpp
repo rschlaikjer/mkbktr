@@ -66,7 +66,7 @@ void MappedNca::print_header_info() {
   }
 }
 
-uint64_t MappedNca::section_size(int section) {
+uint64_t MappedNca::section_size(int section) const {
   MKASSERT(section < 4);
 
   // Get references to filesystem header/entry data
@@ -206,8 +206,8 @@ const uint8_t *MappedNca::section_data(int section) {
   return _backing_data->_data + section_offset;
 }
 
-std::string MappedNca::read_aes_ctr_aligned(int section, uint64_t data_offset,
-                                            uint64_t len) {
+void MappedNca::read_aes_ctr_aligned(int section, uint64_t data_offset,
+                                     uint64_t len, uint8_t *out) const {
   // Get sector start offset
   MKASSERT(section < 4);
   const uint64_t section_offset =
@@ -231,18 +231,23 @@ std::string MappedNca::read_aes_ctr_aligned(int section, uint64_t data_offset,
   MKASSERT(aes_ctx != nullptr);
 
   // Decrypt
-  std::string decrypted;
-  decrypted.resize(len);
   aes_setiv(aes_ctx, ctr, sizeof(ctr));
-  aes_decrypt(aes_ctx, reinterpret_cast<uint8_t *>(decrypted.data()),
-              _backing_data->_data + section_offset + data_offset, len);
+  aes_decrypt(aes_ctx, out, _backing_data->_data + section_offset + data_offset,
+              len);
+}
 
-  return decrypted;
+void MappedNca::read_aes_ctr(int section, uint64_t data_offset, uint64_t len,
+                             uint8_t *out) const {
+  read_aes_ctr_aligned(section, data_offset, len, out);
 }
 
 std::string MappedNca::read_aes_ctr(int section, uint64_t data_offset,
-                                    uint64_t len) {
-  return read_aes_ctr_aligned(section, data_offset, len);
+                                    uint64_t len) const {
+  std::string ret;
+  ret.resize(len);
+  read_aes_ctr_aligned(section, data_offset, len,
+                       reinterpret_cast<uint8_t *>(ret.data()));
+  return ret;
 }
 
 std::unique_ptr<MappedNca>
@@ -298,4 +303,38 @@ MappedNca::parse(std::unique_ptr<mk::mem::MappedData> backing_data,
 
   return nca;
 }
+
+NcaSectionView::NcaSectionView(const MappedNca &nca, int section)
+    : _nca(nca), _section(section) {
+  _current_section = reinterpret_cast<uint8_t *>(malloc(BLOCK_SIZE_BYTES));
+  MKASSERT(_current_section != nullptr);
+}
+
+NcaSectionView::~NcaSectionView() { free(_current_section); }
+
+uint64_t NcaSectionView::size() { return _nca.section_size(_section); }
+
+void NcaSectionView::read(int64_t offset, int64_t len, uint8_t *out) {
+  _nca.read_aes_ctr(_section, offset, len, out);
+}
+
+uint8_t NcaSectionView::operator[](int64_t offset) {
+  // Is the offset within the currently buffered section?
+  const int64_t offset_index = offset % BLOCK_SIZE_BYTES;
+  const int64_t offset_base = offset - offset_index;
+
+  // If it isn't, we need to decrypt from the new offset into our buffer
+  if (offset_base != _current_section_base) {
+    // Decrypt this page
+    _nca.read_aes_ctr(_section, offset_base, BLOCK_SIZE_BYTES,
+                      _current_section);
+    // Update base offset
+    _current_section_base = offset_base;
+  }
+
+  // At this point, we were either in a previously buffered section or have
+  // freshly decrypted the section this offset falls into.
+  return _current_section[offset_index];
+}
+
 } // namespace mk

@@ -146,8 +146,7 @@ void test_incremental_adler(const std::string_view &data) {
   }
 }
 
-Delta generate_diff(const std::string_view &old_data,
-                    const std::string_view &new_data,
+Delta generate_diff(NcaSectionView &old_data, NcaSectionView &new_data,
                     const int64_t block_size) {
 
   // Sanity checks
@@ -162,14 +161,18 @@ Delta generate_diff(const std::string_view &old_data,
   {
     mk::time::Timer t("Generate base block checksums");
 
+    // Create a buffer to store the data chunks
+    auto checksum_buffer = std::make_unique<uint8_t[]>(block_size);
+
     int64_t last_status_print = mk::time::ms();
     for (int64_t old_offset = 0; old_offset < (int64_t)old_data.size();
          old_offset += block_size) {
       // Do we have enough data left to fill this block?
       const int64_t bytes_in_block = std::min(
           block_size, static_cast<int64_t>(old_data.size() - old_offset));
-      const uint8_t *const block_data =
-          reinterpret_cast<const uint8_t *>(&old_data[old_offset]);
+
+      // Decrypt data into our scratch buffer
+      old_data.read(old_offset, bytes_in_block, checksum_buffer.get());
 
       // Create a new checsum holder
       old_block_checksums.emplace_back();
@@ -177,11 +180,11 @@ Delta generate_diff(const std::string_view &old_data,
 
       // Generate rolling checksum
       uint32_t zlib_adler =
-          adler32(AdlerCtx::ADLER_INIT, block_data, bytes_in_block);
+          adler32(AdlerCtx::ADLER_INIT, checksum_buffer.get(), bytes_in_block);
       old_block_checksums.back().weak_checksum = zlib_adler;
 
       // Generate MD5 of block
-      calculate_md5(block_data, bytes_in_block,
+      calculate_md5(checksum_buffer.get(), bytes_in_block,
                     old_block_checksums.back().strong_checksum);
 
       // Maybe print a progress msg
@@ -337,10 +340,14 @@ Delta generate_diff(const std::string_view &old_data,
 
         // If it is in there, generate a strong hash of the candidate blocks to
         // ensure it really does match
-        const uint8_t *const block_start =
-            reinterpret_cast<const uint8_t *>(&new_data[block_start_offset]);
         uint8_t strong_cksum[16];
-        calculate_md5(block_start, current_block_size, strong_cksum);
+        {
+          auto checksum_buffer = std::make_unique<uint8_t[]>(block_size);
+          new_data.read(block_start_offset, current_block_size,
+                        checksum_buffer.get());
+          calculate_md5(checksum_buffer.get(), current_block_size,
+                        strong_cksum);
+        }
 
         BlockChecksum *matched_block = nullptr;
         for (BlockChecksum *block : search->second) {
@@ -386,8 +393,15 @@ Delta generate_diff(const std::string_view &old_data,
         LOG("Emit PATCH relocation @%016x + %016x\n", cur_entry.patched_address,
             new_file_cursor - cur_entry.patched_address);
 #endif
-        patch_data.append(&new_data[cur_entry.patched_address],
-                          new_file_cursor - cur_entry.patched_address);
+        {
+          const std::string::size_type write_offset = patch_data.size();
+          const int64_t bytes_to_append =
+              new_file_cursor - cur_entry.patched_address;
+          patch_data.resize(write_offset + bytes_to_append);
+          new_data.read(
+              cur_entry.patched_address, bytes_to_append,
+              reinterpret_cast<uint8_t *>(&patch_data.data()[write_offset]));
+        }
         relocations.emplace_back(cur_entry);
 
         // Update the old file cursor to the matched position in the base file
@@ -405,8 +419,16 @@ Delta generate_diff(const std::string_view &old_data,
         LOG("Emit PATCH relocation @%016x + %016x\n", cur_entry.patched_address,
             new_file_cursor - cur_entry.patched_address);
 #endif
-        patch_data.append(&new_data[cur_entry.patched_address],
-                          new_file_cursor - cur_entry.patched_address);
+        {
+          const std::string::size_type write_offset = patch_data.size();
+          const int64_t bytes_to_append =
+              new_file_cursor - cur_entry.patched_address;
+          patch_data.resize(write_offset + bytes_to_append);
+          new_data.read(
+              cur_entry.patched_address, bytes_to_append,
+              reinterpret_cast<uint8_t *>(&patch_data.data()[write_offset]));
+        }
+
         relocations.emplace_back(cur_entry);
         break;
       }

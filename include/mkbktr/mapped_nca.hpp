@@ -21,18 +21,21 @@ public:
 
   // Read and decrypt data from a section that uses AES-CTR
   // May only be used for reads that are aligned on a sector boundary
-  std::string read_aes_ctr_aligned(int section, uint64_t data_offset,
-                                   uint64_t len);
+  void read_aes_ctr_aligned(int section, uint64_t data_offset, uint64_t len,
+                            uint8_t *out) const;
 
   // Read and drcrypt data from a section that uses AES-CTR
   // Does not require sector alignment, but may incur memmove
-  std::string read_aes_ctr(int section, uint64_t data_offset, uint64_t len);
+  void read_aes_ctr(int section, uint64_t data_offset, uint64_t len,
+                    uint8_t *out) const;
+  std::string read_aes_ctr(int section, uint64_t data_offset,
+                           uint64_t len) const;
 
   // Read and decrypt an entire section's data
   std::string decrypt_section(int section);
 
   // Size of a section, in bytes
-  uint64_t section_size(int section);
+  uint64_t section_size(int section) const;
 
   // Pointer to the start of section data
   const uint8_t *section_data(int section);
@@ -75,6 +78,30 @@ public:
       reinterpret_cast<NcaFsHeader *>(
           &_xts_header_decrypted[0x400 + 0x200 * 3]),
   };
+};
+
+class NcaSectionView {
+public:
+  static const int64_t BLOCK_SIZE_BYTES = 16 * 1024 * 1024;
+
+public:
+  NcaSectionView(const MappedNca &nca, int section);
+  ~NcaSectionView();
+  uint8_t operator[](int64_t offset);
+  uint64_t size();
+  void read(int64_t offset, int64_t len, uint8_t *out);
+
+  // No copying
+  NcaSectionView(const NcaSectionView &other) = delete;
+  NcaSectionView &operator=(const NcaSectionView &other) = delete;
+
+private:
+  const MappedNca &_nca;
+  const int _section;
+
+  // Start address of current decrypted buffer data
+  int64_t _current_section_base = -1;
+  uint8_t *_current_section = nullptr;
 };
 
 } // namespace mk

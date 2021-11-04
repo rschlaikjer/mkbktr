@@ -81,9 +81,9 @@ target_link_libraries(nca_parse
   core
 )
 
-add_executable(generate_diff
-  src/tools/generate_diff.cpp
-)
-target_link_libraries(generate_diff
-  core
-)
+# add_executable(generate_diff
+#   src/tools/generate_diff.cpp
+# )
+# target_link_libraries(generate_diff
+#   core
+# )
