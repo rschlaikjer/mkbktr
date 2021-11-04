@@ -70,7 +70,6 @@ uint64_t MappedNca::section_size(int section) const {
   MKASSERT(section < 4);
 
   // Get references to filesystem header/entry data
-  const NcaFsHeader *fs_header = _fs_headers[section];
   const NcaFsEntry *fs_entry = &_header->fs_entries[section];
 
   // Total section size is total sector count * sector size
@@ -107,10 +106,6 @@ void MappedNca::print_bktr_section(int section) {
                fs_header->bktr_superblock.subsection_header.size ==
            (fs_entry->end_offset - fs_entry->start_offset) *
                fs_entry->SECTOR_SIZE);
-
-  // Get the start offset of the section
-  const uint64_t section_offset =
-      fs_entry->start_offset * fs_entry->SECTOR_SIZE;
 
   // Decrypt the relocation header
   const uint64_t relocation_header_offset =
@@ -248,15 +243,16 @@ void MappedNca::read_aes_ctr(int section, uint64_t data_offset, uint64_t len,
   // If this _doesn't_ align to a page boundary, manually over-read the first
   // page and copy only the bit we care about into the output buffer
   uint8_t first_sector_buf[0x100];
-  const int64_t misalign_read_offset = data_offset & 0xFF;
-  const int64_t misaligned_bytes_to_keep = 0x100 - misalign_read_offset;
-  read_aes_ctr_aligned(section, data_offset & ~0xFF, 0x100, first_sector_buf);
+  const uint64_t aligned_read_base = data_offset & ~(0x00000000'000000FFL);
+  const uint64_t misalign_read_offset = data_offset & 0xFFL;
+  const uint64_t misaligned_bytes_to_keep = 0x100L - misalign_read_offset;
+  read_aes_ctr_aligned(section, aligned_read_base, 0x100, first_sector_buf);
   memcpy(out, &first_sector_buf[misalign_read_offset],
          misaligned_bytes_to_keep);
 
   // Now read all the subsequent blocks 'normally'
   const int64_t remaining_bytes = len - misaligned_bytes_to_keep;
-  const int64_t first_full_sector_offset = misalign_read_offset + 0x100;
+  const int64_t first_full_sector_offset = aligned_read_base + 0x100;
   read_aes_ctr_aligned(section, first_full_sector_offset, remaining_bytes,
                        &out[misaligned_bytes_to_keep]);
 }
@@ -281,7 +277,6 @@ MappedNca::parse(std::unique_ptr<mk::mem::MappedData> backing_data,
   nca->_aes_xts_ctx = new_aes_ctx(keys.get("header_key"), 32, AES_MODE_XTS);
 
   // Decrypt header
-  uint8_t xts_header[0xC00];
   aes_xts_decrypt(nca->_aes_xts_ctx, nca->_xts_header_decrypted,
                   nca->_backing_data->_data, sizeof(nca->_xts_header_decrypted),
                   0, AES_SECTOR_SIZE);

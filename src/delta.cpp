@@ -161,7 +161,9 @@ Delta generate_diff(NcaSectionView &old_data, NcaSectionView &new_data,
   {
     mk::time::Timer t("Generate base block checksums");
 
-    // Create a buffer to store the data chunks
+    // Since we are decrypting the NCA on the fly, create a scratch buffer to
+    // hold our currently decrypted block of data so that we can generate a
+    // checksum over it
     auto checksum_buffer = std::make_unique<uint8_t[]>(block_size);
 
     int64_t last_status_print = mk::time::ms();
