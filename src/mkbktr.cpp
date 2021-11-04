@@ -93,28 +93,10 @@ int main(int argc, char **argv) {
   // nca_old->print_header_info();
   // nca_new->print_header_info();
 
-  // Decrypt section 1 from each input NCA
-  mk::delta::Delta delta_ctx;
-  {
-    std::string old_s1;
-    std::string new_s1;
-    {
-      LOG("Decrypting '%s'...\n", original_nca_filename);
-      mk::time::Timer t("Decrypt old NCA ROMFS");
-      old_s1 = nca_old->decrypt_section(1);
-    }
-    {
-      LOG("Decrypting '%s'...\n", new_nca_filename);
-      mk::time::Timer t("Decrypt new NCA ROMFS");
-      new_s1 = nca_new->decrypt_section(1);
-    }
-
-    LOG("Old ROMFS size: %ld bytes\n", old_s1.size());
-    LOG("New ROMFS size: %ld bytes\n", new_s1.size());
-
-    // Generate deltas
-    delta_ctx = mk::delta::generate_diff(old_s1, new_s1);
-  }
+  // Generate a set of relocations between old and new NCA section 1
+  mk::NcaSectionView old_s1{*nca_old, 1};
+  mk::NcaSectionView new_s1{*nca_new, 1};
+  mk::delta::Delta delta_ctx = mk::delta::generate_diff(old_s1, new_s1);
 
   // Print
   LOG("Total patch size %.fMiB\n",

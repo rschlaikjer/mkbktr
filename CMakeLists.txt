@@ -81,9 +81,16 @@ target_link_libraries(nca_parse
   core
 )
 
-add_executable(generate_diff
-  src/tools/generate_diff.cpp
+add_executable(decrypt_test
+  src/tools/decrypt_test.cpp
 )
-target_link_libraries(generate_diff
+target_link_libraries(decrypt_test
   core
 )
+
+# add_executable(generate_diff
+#   src/tools/generate_diff.cpp
+# )
+# target_link_libraries(generate_diff
+#   core
+# )

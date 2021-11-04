@@ -4,6 +4,7 @@
 #include <string_view>
 #include <vector>
 
+#include <mkbktr/mapped_nca.hpp>
 #include <mkbktr/mktr_structs.hpp>
 
 namespace mk {
@@ -18,8 +19,7 @@ struct Delta {
 };
 
 // Given an base file and an updated file, generate a list of relocation entries
-Delta generate_diff(const std::string_view &old_data,
-                    const std::string_view &new_data,
+Delta generate_diff(NcaSectionView &old_data, NcaSectionView &new_data,
                     int64_t block_size = DEFAULT_BLOCK_SIZE);
 
 } // namespace delta
