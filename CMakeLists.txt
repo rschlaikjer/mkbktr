@@ -88,6 +88,13 @@ target_link_libraries(decrypt_test
   core
 )
 
+add_executable(ivfc_info
+  src/tools/ivfc_info.cpp
+)
+target_link_libraries(ivfc_info
+  core
+)
+
 # add_executable(generate_diff
 #   src/tools/generate_diff.cpp
 # )

@@ -42,6 +42,8 @@ public:
 
   const uint8_t *header_plaintext() { return _xts_header_decrypted; }
 
+  std::unordered_map<uint64_t, std::string> list_files(int section);
+
 private:
   MappedNca(std::unique_ptr<mk::mem::MappedData> backing_data, mk::Keys keys);
 

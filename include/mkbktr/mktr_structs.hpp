@@ -191,3 +191,36 @@ struct CnmtContentMetaInfo {
   uint8_t _reserved_0xe[2];
 };
 static_assert(sizeof(CnmtContentMetaInfo) == 0x10);
+
+struct RomfsHeader {
+  uint64_t header_size;
+  uint64_t dir_hash_table_offset;
+  uint64_t dir_hash_table_size;
+  uint64_t dir_meta_table_offset;
+  uint64_t dir_meta_table_size;
+  uint64_t file_hash_table_offset;
+  uint64_t file_hash_table_size;
+  uint64_t file_meta_table_offset;
+  uint64_t file_meta_table_size;
+  uint64_t data_offset;
+};
+
+struct RomfsDirEntry {
+  uint32_t parent;
+  uint32_t sibling;
+  uint32_t child;
+  uint32_t file;
+  uint32_t hash;
+  uint32_t name_size;
+  const char *name;
+};
+
+struct RomfsFileEntry {
+  uint32_t parent;
+  uint32_t sibling;
+  uint64_t offset;
+  uint64_t size;
+  uint32_t hash;
+  uint32_t name_size;
+  const char *name;
+};

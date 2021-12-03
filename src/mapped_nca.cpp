@@ -14,6 +14,130 @@ MappedNca::MappedNca(std::unique_ptr<mk::mem::MappedData> backing_data,
                      mk::Keys keys)
     : _backing_data(std::move(backing_data)), _keys(keys) {}
 
+std::unordered_map<uint64_t, std::string> MappedNca::list_files(int section) {
+  // Iterate the IVFC on a ROMFS block and accumulate a list of files + their
+  // offsets
+  MKASSERT(section < 4);
+
+  // Read the IVFS header for the section
+  HierarchicalIntegrity ivfc =
+      _fs_headers[section]->bktr_superblock.ivfc_header;
+  MKASSERT(!memcmp(ivfc.magic, "IVFC", 4));
+
+  // Read romfs header
+  RomfsHeader romfs_header;
+  read_aes_ctr(section, ivfc.levels[5].offset, sizeof(RomfsHeader),
+               reinterpret_cast<uint8_t *>(&romfs_header));
+
+  // Read the first directory entry
+  RomfsDirEntry dirent;
+  read_aes_ctr(section,
+               ivfc.levels[5].offset + romfs_header.dir_meta_table_offset,
+               sizeof(dirent), reinterpret_cast<uint8_t *>(&dirent));
+
+  auto read_next = [&](int64_t offset, auto *out, std::string *out_name) {
+    // Read the fixed-size header
+    read_aes_ctr(1, ivfc.levels[5].offset + offset, sizeof(typeof(*out)),
+                 reinterpret_cast<uint8_t *>(out));
+
+    // Allocate and copy out the name string
+    if (out_name != nullptr) {
+      out_name->resize(out->name_size);
+      read_aes_ctr(
+          1, ivfc.levels[5].offset + offset + offsetof(typeof(*out), name),
+          out_name->size(), reinterpret_cast<uint8_t *>(out_name->data()));
+    }
+  };
+
+  auto read_next_dir = [&](int64_t offset, RomfsDirEntry *out,
+                           std::string *out_name) {
+    read_next(romfs_header.dir_meta_table_offset + offset, out, out_name);
+  };
+
+  auto read_next_file = [&](int64_t offset, RomfsFileEntry *out,
+                            std::string *out_name) {
+    read_next(romfs_header.file_meta_table_offset + offset, out, out_name);
+  };
+
+  auto print_dir_entry = [](const RomfsDirEntry &entry) {
+    LOG("    Parent:      %08x\n", entry.parent);
+    LOG("    Sibling:     %08x\n", entry.sibling);
+    LOG("    Child:       %08x\n", entry.child);
+    LOG("    File:        %08x\n", entry.file);
+    LOG("    Hash:        %08x\n", entry.hash);
+    LOG("    Name Size:   %08x\n", entry.name_size);
+  };
+
+  auto print_file_entry = [](const RomfsFileEntry &entry) {
+    LOG("    Parent:      %08x\n", entry.parent);
+    LOG("    Sibling:     %08x\n", entry.sibling);
+    LOG("    Offset:      %016x\n", entry.offset);
+    LOG("    Size:        %016x\n", entry.size);
+    LOG("    Hash:        %08x\n", entry.hash);
+    LOG("    Name Size:   %08x\n", entry.name_size);
+  };
+
+  // Map of offset -> file name
+  std::unordered_map<uint64_t, std::string> files;
+
+  std::function<void(const RomfsFileEntry &parent)> file_iterator =
+      [&](const RomfsFileEntry &prev) {
+        // Iterate sibling if present
+        if (prev.sibling != 0xFFFFFFFF) {
+          RomfsFileEntry f_entry;
+          std::string f_name;
+          read_next_file(prev.sibling, &f_entry, &f_name);
+          LOG("File: %s\n", f_name.c_str());
+          files[f_entry.offset] = f_name;
+          print_file_entry(f_entry);
+          file_iterator(f_entry);
+        }
+      };
+
+  std::function<void(const RomfsDirEntry &parent)> dir_iterator =
+      [&](const RomfsDirEntry &parent) {
+        // Iterate child if present
+        if (parent.child != 0xFFFFFFFF) {
+          RomfsDirEntry child_entry;
+          std::string child_name;
+          read_next_dir(parent.child, &child_entry, &child_name);
+          LOG("Child: %s\n", child_name.c_str());
+          print_dir_entry(child_entry);
+          dir_iterator(child_entry);
+        }
+
+        // Iterate sibling if extant
+        if (parent.sibling != 0xFFFFFFFF) {
+          RomfsDirEntry sibling_entry;
+          std::string sibling_name;
+          read_next_dir(parent.sibling, &sibling_entry, &sibling_name);
+          LOG("Sibling: %s\n", sibling_name.c_str());
+          print_dir_entry(sibling_entry);
+          dir_iterator(sibling_entry);
+        }
+
+        // Iterate file
+        if (parent.file != 0xFFFFFFFF) {
+          RomfsFileEntry f_entry;
+          std::string f_name;
+          read_next_file(parent.file, &f_entry, &f_name);
+          LOG("File: %s\n", f_name.c_str());
+          files[f_entry.offset] = f_name;
+          print_file_entry(f_entry);
+          file_iterator(f_entry);
+        }
+      };
+
+  // Load the initial parent dirent
+  RomfsDirEntry d_entry;
+  read_next_dir(0, &d_entry, nullptr);
+
+  // Traverse file tree
+  dir_iterator(d_entry);
+
+  return files;
+}
+
 void MappedNca::print_header_info() {
   LOG("Magicnum: %c%c%c%c\n", _header->magic[0], _header->magic[1],
       _header->magic[2], _header->magic[3]);
