@@ -9,19 +9,6 @@
 #include <mkbktr/util/mem.hpp>
 #include <mkbktr/util/string.hpp>
 
-[[maybe_unused]] static void
-nca_update_bktr_ctr(uint8_t *ctr, uint32_t subsection_ctr, uint64_t offset) {
-  offset >>= 4;
-  for (unsigned j = 0; j < 0x8; j++) {
-    ctr[0x10 - j - 1] = static_cast<uint8_t>(offset & 0xFF);
-    offset >>= 8;
-  }
-  for (unsigned j = 0; j < 4; j++) {
-    ctr[0x8 - j - 1] = static_cast<uint8_t>(subsection_ctr & 0xFF);
-    subsection_ctr >>= 8;
-  }
-}
-
 int main(int argc, char **argv) {
   if (argc != 3) {
     fprintf(stderr, "Usage: %s [nca filename] [/path/to/prod.keys]\n", argv[0]);
