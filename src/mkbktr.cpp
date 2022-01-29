@@ -285,6 +285,17 @@ int main(int argc, char **argv) {
   patch_header->fs_entries[3].start_offset = 0x0;
   patch_header->fs_entries[3].end_offset = 0x0;
 
+  // Regenerate the total file content size
+  patch_header->content_size = 0;
+  for (int i = 0; i < 4; i++) {
+    if (patch_header->fs_entries[i].end_offset * NcaFsEntry::SECTOR_SIZE >
+        patch_header->content_size) {
+      patch_header->content_size =
+          patch_header->fs_entries[i].end_offset * NcaFsEntry::SECTOR_SIZE;
+    }
+  }
+  LOG("NCA content size: 0x%016lx\n", patch_header->content_size);
+
   // Open our output file context
   int output_fd = ::open(bktr_nca_filename, O_RDWR | O_CREAT | O_TRUNC, 0644);
   if (output_fd == -1) {
