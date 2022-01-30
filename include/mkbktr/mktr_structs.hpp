@@ -49,7 +49,7 @@ struct __attribute__((packed)) BktrRelocationEntry {
 };
 
 struct __attribute__((packed)) BktrRelocationBucket {
-  uint32_t _padding0;
+  uint32_t bucket_index;
   uint32_t entry_count;
   uint64_t bucket_end_offset;
   BktrRelocationEntry entries[0x3FF0 / sizeof(BktrRelocationEntry)];
