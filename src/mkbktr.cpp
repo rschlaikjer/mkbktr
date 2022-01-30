@@ -165,11 +165,14 @@ int main(int argc, char **argv) {
   subsection_header.bucket_patch_offsets[0] = 0x0;
   BktrSubsectionBucket subsection_bucket;
   memset(&subsection_bucket, 0, sizeof(subsection_bucket));
-  subsection_bucket.entry_count = 1;
+  subsection_bucket.entry_count = 2;
   subsection_bucket.bucket_end_offset = bktr_section_data.size();
   // All data one section, zero tweak
   subsection_bucket.entries[0].offset = 0x0;
   subsection_bucket.entries[0].aes_ctr = 0x0;
+  // Add a second, fake section in case people realy want to binary search?
+  subsection_bucket.entries[1].offset = bktr_section_data.size();
+  subsection_bucket.entries[1].aes_ctr = 0x1;
 
   LOG("Subsection patch size: %016x, bucket end offset: %016x\n",
       subsection_header.patched_image_size,
@@ -183,10 +186,10 @@ int main(int argc, char **argv) {
   {
     const size_t relocation_data_size =
         sizeof(BktrHeaderEntry) + sizeof(BktrSubsectionBucket);
+    const size_t write_offset = bktr_section_data.size();
     bktr_section_data.resize(bktr_section_data.size() + relocation_data_size,
                              '\0');
-    char *const relocation_write_ptr =
-        &bktr_section_data.data()[bktr_section_data.size()];
+    char *const relocation_write_ptr = &bktr_section_data.data()[write_offset];
     memcpy(relocation_write_ptr, &relocation_header, sizeof(relocation_header));
     memcpy(relocation_write_ptr + sizeof(relocation_header), &relocation_bucket,
            sizeof(relocation_bucket));
@@ -199,10 +202,10 @@ int main(int argc, char **argv) {
   {
     const size_t subsection_data_size =
         sizeof(BktrHeaderEntry) + sizeof(BktrSubsectionBucket);
+    const size_t write_offset = bktr_section_data.size();
     bktr_section_data.resize(bktr_section_data.size() + subsection_data_size,
                              '\0');
-    char *const subsection_write_ptr =
-        &bktr_section_data.data()[bktr_section_data.size()];
+    char *const subsection_write_ptr = &bktr_section_data.data()[write_offset];
     memcpy(subsection_write_ptr, &subsection_header, sizeof(subsection_header));
     memcpy(subsection_write_ptr + sizeof(subsection_header), &subsection_bucket,
            sizeof(subsection_bucket));
