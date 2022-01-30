@@ -183,10 +183,10 @@ int main(int argc, char **argv) {
   {
     const size_t relocation_data_size =
         sizeof(BktrHeaderEntry) + sizeof(BktrSubsectionBucket);
-    char *const relocation_write_ptr =
-        &bktr_section_data.data()[bktr_section_data.size()];
     bktr_section_data.resize(bktr_section_data.size() + relocation_data_size,
                              '\0');
+    char *const relocation_write_ptr =
+        &bktr_section_data.data()[bktr_section_data.size()];
     memcpy(relocation_write_ptr, &relocation_header, sizeof(relocation_header));
     memcpy(relocation_write_ptr + sizeof(relocation_header), &relocation_bucket,
            sizeof(relocation_bucket));
@@ -199,10 +199,10 @@ int main(int argc, char **argv) {
   {
     const size_t subsection_data_size =
         sizeof(BktrHeaderEntry) + sizeof(BktrSubsectionBucket);
-    char *const subsection_write_ptr =
-        &bktr_section_data.data()[bktr_section_data.size()];
     bktr_section_data.resize(bktr_section_data.size() + subsection_data_size,
                              '\0');
+    char *const subsection_write_ptr =
+        &bktr_section_data.data()[bktr_section_data.size()];
     memcpy(subsection_write_ptr, &subsection_header, sizeof(subsection_header));
     memcpy(subsection_write_ptr + sizeof(subsection_header), &subsection_bucket,
            sizeof(subsection_bucket));
