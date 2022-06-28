@@ -1,5 +1,6 @@
 #include <string.h>
 
+#include <functional>
 #include <memory>
 
 #include <mkbktr/mapped_nca.hpp>
