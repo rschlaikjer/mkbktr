@@ -84,7 +84,7 @@ public:
 
 class NcaSectionView {
 public:
-  static const int64_t BLOCK_SIZE_BYTES = 16 * 1024 * 1024;
+  static const inline int64_t BLOCK_SIZE_BYTES = 16 * 1024 * 1024;
 
 public:
   NcaSectionView(const MappedNca &nca, int section);

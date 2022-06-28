@@ -34,10 +34,11 @@ public:
 
   AdlerCtx(int64_t block_size) : _block_size(block_size) {
     _data_ringbuffer.resize(block_size);
+    reset();
   }
 
   void reset() {
-    _value = ADLER_INIT;
+    unpack_adler(ADLER_INIT, &_sum, &_sum2);
     _digested_block_count = 0;
   }
 
@@ -47,12 +48,22 @@ public:
     }
   }
 
-  uint32_t digest() { return _value; }
+  static inline uint32_t pack_adler(uint16_t sum, uint16_t sum2) {
+    return (sum2 << 16) | sum;
+  }
+
+  static inline void unpack_adler(uint32_t adler, uint16_t *sum,
+                                  uint16_t *sum2) {
+    *sum = (adler >> 0) & 0xFFFF;
+    *sum2 = (adler >> 16) & 0xFFFF;
+  }
+
+  uint32_t digest() { return pack_adler(_sum, _sum2); }
 
   void roll_1(uint8_t new_byte) {
     // Split the old adler ctx
-    const uint32_t old_sum = (_value >> 0) & 0xFFFF;
-    const uint32_t old_sum2 = (_value >> 16) & 0xFFFF;
+    const uint32_t old_sum = _sum;
+    const uint32_t old_sum2 = _sum2;
 
     // Add in the new byte
     uint32_t new_sum = old_sum + new_byte;
@@ -98,7 +109,8 @@ public:
     }
 
     // Re-pack
-    _value = (new_sum2 << 16) | new_sum;
+    _sum = new_sum;
+    _sum2 = new_sum2;
   }
 
 private:
@@ -112,7 +124,8 @@ private:
   int64_t _digested_block_count = 0;
 
   // Current digest
-  uint32_t _value = ADLER_INIT;
+  uint16_t _sum;
+  uint16_t _sum2;
 };
 
 void calculate_md5(const uint8_t *data, size_t len, uint8_t out[16]) {

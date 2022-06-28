@@ -465,8 +465,11 @@ void NcaSectionView::read(int64_t offset, int64_t len, uint8_t *out) {
 
 uint8_t NcaSectionView::operator[](int64_t offset) {
   // Is the offset within the currently buffered section?
-  const int64_t offset_index = offset % BLOCK_SIZE_BYTES;
-  const int64_t offset_base = offset - offset_index;
+  // Take advantage of power of two block size
+  static_assert(__builtin_popcountll(BLOCK_SIZE_BYTES) == 1);
+  constexpr int64_t offset_mask = BLOCK_SIZE_BYTES - 1;
+  const int64_t offset_index = offset & offset_mask;
+  const int64_t offset_base = offset & ~offset_mask;
 
   // If it isn't, we need to decrypt from the new offset into our buffer
   if (offset_base != _current_section_base) {
