@@ -417,9 +417,23 @@ int main(int argc, char **argv) {
             enc_bktr_section.size() - bktr_relocation_header_offset);
       }
 
-      MKASSERT(::write(output_fd, enc_bktr_section.data(),
-                       enc_bktr_section.size()) ==
-               (long int)enc_bktr_section.size());
+      // Flush the patch section to disk
+      static const ssize_t WRITE_BLOCKSIZE = 32 * 1024 * 1024;
+      size_t total_written = 0;
+      while (total_written < enc_bktr_section.size()) {
+        const ssize_t bytes_remaining = enc_bktr_section.size() - total_written;
+        const ssize_t bytes_to_write = bytes_remaining < WRITE_BLOCKSIZE
+                                           ? bytes_remaining
+                                           : WRITE_BLOCKSIZE;
+        const ssize_t written = ::write(
+            output_fd, enc_bktr_section.data() + total_written, bytes_to_write);
+        if (written < 0) {
+          LOG("Failed to write output: %s\n", strerror(errno));
+          MKASSERT(false);
+        }
+
+        total_written += written;
+      }
       LOG("Wrote %lu bytes for section %d\n", enc_bktr_section.size(), i);
     }
   }
