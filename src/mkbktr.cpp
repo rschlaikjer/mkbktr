@@ -1,6 +1,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -90,6 +91,19 @@ int main(int argc, char **argv) {
   auto nca_new = mk::MappedNca::parse(std::move(mapped_nca_new), *keys);
   if (nca_new == nullptr) {
     LOG("Failed to parse NCA '%s'\n", new_nca_filename);
+    return -1;
+  }
+
+  // Patching does a lot of linear seek across the files, so MADVISE the kernel
+  // of that fact
+  if (-1 == madvise(const_cast<uint8_t *>(nca_old->_backing_data->_data),
+                    nca_old->_backing_data->_size, MADV_SEQUENTIAL)) {
+    LOG("Failed to madvise: %s\n", strerror(errno));
+    return -1;
+  }
+  if (-1 == madvise(const_cast<uint8_t *>(nca_new->_backing_data->_data),
+                    nca_new->_backing_data->_size, MADV_SEQUENTIAL)) {
+    LOG("Failed to madvise: %s\n", strerror(errno));
     return -1;
   }
 
