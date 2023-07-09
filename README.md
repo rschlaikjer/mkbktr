@@ -1,6 +1,19 @@
 # mkbtr
 
-Generate Switch NCA updates using BKTR tables.
+Generates Switch NCA updates using BKTR tables.
+
+This implementation is based entirely off of information gleaned from
+the [SwitchBrew Wiki](https://switchbrew.org/wiki/NCA),
+the internals of the [Yuzu emulator](https://github.com/yuzu-emu/yuzu),
+and the implementation of [hactool](https://github.com/SciresM/hactool).
+
+At a high level, BKTR updates compose a 'patched' game image by selectively
+using regions of data from the base game image interspersed with new data
+contained in the BKTR file itself. This program uses an Adler32 rolling
+checksum + MD5 'strong' checksum to locate common sections between a 'base' NCA
+and an 'updated' NCA, similar to how `rsync` works. Sections common between
+files are relocated from the base NCA, and and changes are written into the
+patch file.
 
 ## Usage
 
