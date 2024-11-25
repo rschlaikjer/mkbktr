@@ -400,6 +400,8 @@ Delta generate_diff(NcaSectionView &old_data, NcaSectionView &new_data,
 #ifdef DELTA_LOG
           LOG("Rounding relocation to 16 byte boundary - %016lx -> %016lx\n",
               orig_cursor, new_file_cursor);
+#else
+          (void)orig_cursor;
 #endif
         }
 

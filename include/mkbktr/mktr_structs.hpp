@@ -99,9 +99,7 @@ struct __attribute__((packed)) NcaFsHeader {
   uint8_t hash_type;
   uint8_t encryption_type;
   uint8_t _0x05[3];
-  union {
-    BktrSuperblock bktr_superblock;
-  };
+  BktrSuperblock bktr_superblock;
   uint32_t generation;
   uint32_t secure_value;
   uint8_t sparse_info[0x30];
