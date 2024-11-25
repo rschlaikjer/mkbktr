@@ -1,3 +1,5 @@
+#include <stdint.h>
+
 #include <mkbktr.hpp>
 #include <mkbktr/util/string.hpp>
 
