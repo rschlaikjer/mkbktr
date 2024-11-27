@@ -275,9 +275,9 @@ Delta generate_diff(NcaSectionView &old_data, NcaSectionView &new_data,
       LOG("Begin linear seek starting at  %016x new, %016x old\n",
           new_file_cursor, old_file_cursor);
 #endif
-      while (new_data[new_file_cursor] == old_data[old_file_cursor] &&
-             new_file_cursor < (int64_t)new_data.size() &&
-             old_file_cursor < (int64_t)old_data.size()) {
+      while (new_file_cursor < (int64_t)new_data.size() &&
+             old_file_cursor < (int64_t)old_data.size() &&
+             new_data[new_file_cursor] == old_data[old_file_cursor]) {
         new_file_cursor++;
         old_file_cursor++;
 
