@@ -461,8 +461,8 @@ Delta generate_diff(NcaSectionView &old_data, NcaSectionView &new_data,
 
   // Wrap up the data + relocations and return
   Delta ret;
-  ret.patch_data = patch_data;
-  ret.relocations = relocations;
+  ret.patch_data = std::move(patch_data);
+  ret.relocations = std::move(relocations);
   return ret;
 }
 
