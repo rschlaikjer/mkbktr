@@ -138,8 +138,8 @@ int main(int argc, char **argv) {
     return size + NcaFsEntry::SECTOR_SIZE - mod;
   };
 
-  // Clone the delta data into the start of our BKTR section
-  std::string bktr_section_data = delta_ctx.patch_data;
+  // Use the delta data as the start of our BKTR section
+  std::string bktr_section_data = std::move(delta_ctx.patch_data);
   LOG("Raw BKTR section data: %016lx\n", bktr_section_data.size());
 
   // Pad to a multiple of sections
