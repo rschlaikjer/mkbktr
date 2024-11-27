@@ -333,6 +333,13 @@ void MappedNca::read_aes_ctr_aligned(int section, uint64_t data_offset,
   const uint64_t section_offset =
       _header->fs_entries[section].start_offset * NcaFsEntry::SECTOR_SIZE;
 
+  // Check where the sector ends and cap the len if necessary
+  const uint64_t section_end_offset =
+      _header->fs_entries[section].end_offset * NcaFsEntry::SECTOR_SIZE;
+  const uint64_t section_size = section_end_offset - section_offset;
+  MKASSERT(data_offset < section_size);
+  len = std::min(len, section_size - data_offset);
+
   // Assert that the read is aligned
   MKASSERT(((section_offset + data_offset) & 0xFF) == 0);
 
